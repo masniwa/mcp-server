@@ -7,12 +7,16 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-private const val MAX_HISTORY_ITEM_LENGTH = 5_000
-private const val TRUNCATION_MARKER = "... (truncated)"
+// 20261007 mniwa >> Disable history item truncation and return full JSON.
+// private const val MAX_HISTORY_ITEM_LENGTH = 5_000
+// private const val TRUNCATION_MARKER = "... (truncated)"
 
+// 20261007 mniwa >> Return full history item JSON without truncation.
 internal inline fun <reified T> encodeHistoryItem(item: T): String =
-    limitHistoryItemJson(Json.encodeToString(item))
+    Json.encodeToString(item)
+// << mniwa
 
+/*
 @PublishedApi
 internal fun limitHistoryItemJson(serialized: String): String {
     if (serialized.length <= MAX_HISTORY_ITEM_LENGTH) return serialized
@@ -56,3 +60,5 @@ private fun String.truncateTo(maxLength: Int): String {
     }
     return take(prefixLength) + TRUNCATION_MARKER
 }
+*/
+// << mniwa
