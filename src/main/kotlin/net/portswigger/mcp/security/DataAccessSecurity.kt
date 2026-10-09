@@ -7,7 +7,9 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 enum class DataAccessType() {
-    HTTP_HISTORY(), WEBSOCKET_HISTORY(), ORGANIZER();
+    // >> 20261009 mniwa Require separate consent for cross-tool Logger capture rather than widening Proxy history permission.
+    HTTP_HISTORY(), WEBSOCKET_HISTORY(), ORGANIZER(), LOGGER_HISTORY();
+    // << mniwa
 }
 
 interface DataAccessApprovalHandler {
@@ -24,6 +26,9 @@ class SwingDataAccessApprovalHandler : DataAccessApprovalHandler {
                     DataAccessType.HTTP_HISTORY -> "HTTP history"
                     DataAccessType.WEBSOCKET_HISTORY -> "WebSocket history"
                     DataAccessType.ORGANIZER -> "Organizer items"
+                    // >> 20261009 mniwa Identify the broader cross-tool HTTP capture in the approval dialog.
+                    DataAccessType.LOGGER_HISTORY -> "MCP Logger HTTP capture (all tools)"
+                    // << mniwa
                 }
 
                 val message = buildString {
@@ -53,6 +58,9 @@ class SwingDataAccessApprovalHandler : DataAccessApprovalHandler {
                             DataAccessType.HTTP_HISTORY -> config.alwaysAllowHttpHistory = true
                             DataAccessType.WEBSOCKET_HISTORY -> config.alwaysAllowWebSocketHistory = true
                             DataAccessType.ORGANIZER -> config.alwaysAllowOrganizer = true
+                            // >> 20261009 mniwa Persist only the independently granted Logger access permission.
+                            DataAccessType.LOGGER_HISTORY -> config.alwaysAllowLoggerHistory = true
+                            // << mniwa
                         }
                         continuation.resume(true)
                     }
@@ -81,6 +89,9 @@ object DataAccessSecurity {
             DataAccessType.HTTP_HISTORY -> config.alwaysAllowHttpHistory
             DataAccessType.WEBSOCKET_HISTORY -> config.alwaysAllowWebSocketHistory
             DataAccessType.ORGANIZER -> config.alwaysAllowOrganizer
+            // >> 20261009 mniwa Do not reuse an existing Proxy history grant for Logger traffic.
+            DataAccessType.LOGGER_HISTORY -> config.alwaysAllowLoggerHistory
+            // << mniwa
         }
 
         if (isAlwaysAllowed) {

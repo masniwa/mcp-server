@@ -48,6 +48,18 @@ class McpConfig(storage: PersistedObject, private val logging: Logging) {
             }
         }
 
+    // >> 20261009 mniwa Store a separate Logger history grant with the existing data-access listener lifecycle.
+    private var _alwaysAllowLoggerHistory by storage.boolean(false)
+    var alwaysAllowLoggerHistory: Boolean
+        get() = _alwaysAllowLoggerHistory
+        set(value) {
+            if (_alwaysAllowLoggerHistory != value) {
+                _alwaysAllowLoggerHistory = value
+                notifyDataAccessChanged()
+            }
+        }
+    // << mniwa
+
     var filterConfigCredentials by storage.boolean(true)
 
     private var _autoApproveTargets by storage.stringList("")

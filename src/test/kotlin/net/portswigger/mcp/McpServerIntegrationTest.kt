@@ -48,7 +48,9 @@ class McpServerIntegrationTest {
         
         runBlocking {
             var attempts = 0
-            while (!serverStarted && attempts < 10) {
+            // >> 20261009 mniwa Allow the same startup grace period as the other MCP integration tests.
+            while (!serverStarted && attempts < 30) {
+            // << mniwa
                 delay(100)
                 attempts++
             }

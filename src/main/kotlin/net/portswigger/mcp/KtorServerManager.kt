@@ -15,12 +15,20 @@ import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.server.mcp
 import net.portswigger.mcp.config.McpConfig
 import net.portswigger.mcp.tools.registerTools
+// >> 20261009 mniwa Keep one cross-tool HTTP recorder across MCP server restarts and release it on extension shutdown.
+import net.portswigger.mcp.tools.LoggerHttpHistory
+// << mniwa
 import java.net.URI
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class KtorServerManager(private val api: MontoyaApi) : ServerManager {
+
+    // >> 20261009 mniwa Register HTTP observation once for this extension manager rather than once per MCP client or server start.
+    private val loggerHistory = LoggerHttpHistory()
+    private val loggerRegistration = api.http().registerHttpHandler(loggerHistory)
+    // << mniwa
 
     private var server: EmbeddedServer<*, *>? = null
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
@@ -96,7 +104,9 @@ class KtorServerManager(private val api: MontoyaApi) : ServerManager {
                         mcpServer
                     }
 
-                    mcpServer.registerTools(api, config)
+                    // >> 20261009 mniwa Share the live recorder with the read-only Logger history tools.
+                    mcpServer.registerTools(api, config, loggerHistory)
+                    // << mniwa
                 }.apply {
                     start(wait = false)
                 }
@@ -128,6 +138,9 @@ class KtorServerManager(private val api: MontoyaApi) : ServerManager {
     }
 
     override fun shutdown() {
+        // >> 20261009 mniwa Stop retaining traffic when this extension manager is unloaded.
+        loggerRegistration.deregister()
+        // << mniwa
         server?.stop(1000, 5000)
         server = null
 

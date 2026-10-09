@@ -45,6 +45,58 @@ import java.net.ServerSocket
 import javax.swing.JTextArea
 
 class ToolsKtTest {
+
+    // >> 20261009 mniwa Exercise Logger pagination and filtering through MCP using the registered HTTP handler.
+    @Test
+    fun `logger tools expose cross tool metadata and apply filtering before pagination`() = runBlocking {
+        val handler = slot<burp.api.montoya.http.handler.HttpHandler>()
+        val http = api.http()
+        verify { http.registerHttpHandler(capture(handler)) }
+        val history = handler.captured as LoggerHttpHistory
+        val service = net.portswigger.mcp.schema.HttpService("localhost", 3000, false)
+        history.recordRequest(20, "PROXY", service, "http://localhost:3000/a", "GET /a HTTP/1.1\r\nHost: localhost:3000\r\n\r\n", null)
+        history.recordRequest(21, "SCANNER", service, "http://localhost:3000/b", "POST /b HTTP/1.1\r\nHost: localhost:3000\r\n\r\nbody", null)
+        history.recordResponse(21, "SCANNER", service, "http://localhost:3000/b", "POST /b HTTP/1.1\r\nHost: localhost:3000\r\n\r\nbody", "HTTP/1.1 200 OK\r\n\r\nsaved-result", null)
+        val first = Json.parseToJsonElement(client.callTool("get_logger_http_history", mapOf("count" to 1, "offset" to 0)).expectTextContent()).jsonObject
+        assertEquals("PROXY", first["tool"]!!.jsonPrimitive.content)
+        val filtered = Json.parseToJsonElement(client.callTool("get_logger_http_history_regex", mapOf("regex" to "saved-result", "count" to 1, "offset" to 0)).expectTextContent()).jsonObject
+        assertEquals("SCANNER", filtered["tool"]!!.jsonPrimitive.content)
+        assertEquals("RESPONSE_RECEIVED", filtered["responseState"]!!.jsonPrimitive.content)
+        assertEquals("Reached end of items", client.callTool("get_logger_http_history_regex", mapOf("regex" to "SCANNER", "count" to 1, "offset" to 1)).expectTextContent())
+        assertTrue(client.callTool("get_logger_http_history", mapOf("count" to 0, "offset" to 0)).expectTextContent().startsWith("Error:"))
+        assertTrue(client.callTool("get_logger_http_history_regex", mapOf("regex" to "[", "count" to 1, "offset" to 0)).expectTextContent().startsWith("Error:"))
+        val status = Json.parseToJsonElement(client.callTool("get_logger_history_status", emptyMap()).expectTextContent()).jsonObject
+        assertEquals("MCP_HTTP_HANDLER", status["source"]!!.jsonPrimitive.content)
+        verify(exactly = 0) { http.sendRequest(any<HttpRequest>()) }
+    }
+    // << mniwa
+
+    @Test
+    fun `cached CPH configuration carries extraction and source tab without a second fetch`() = runBlocking {
+        val regex = "\"id\"\\s*:\\s*(?P<id>\\d+)"
+        val text = client.callTool("generate_cph_import_config", mapOf(
+            "tabName" to "cleanup", "enabled" to true, "dynamic" to true,
+            "extractMode" to "cached", "modifyType" to "requests",
+            "issuerHost" to "localhost", "issuerPort" to 3000, "issuerHttps" to false,
+            "singleRequest" to "GET /datainfo HTTP/1.1\r\nHost: localhost:3000\r\n\r\n",
+            "singleResponse" to "HTTP/1.1 200 OK\r\n\r\n{\"id\":3}",
+            "singleExtractExpression" to regex, "singleExtractExpressionIsRegex" to true,
+            "modifyScopeExpression" to "cphtarget:cleanup", "modifyScopeExpressionIsRegex" to false,
+            "matchExpression" to "{{cleanup_id}}", "matchExpressionIsRegex" to false,
+            "replacementExpression" to "\\g<id>", "replacementExpressionIsRegex" to true,
+            "includeOptions" to true, "cachedSelection" to "info_cache"
+        )).expectTextContent()
+        val root = Json.parseToJsonElement(text).jsonObject
+        val handler = root.getValue("cleanup").jsonObject
+        assertEquals("2", handler.getValue("extract_choice_index").jsonPrimitive.content)
+        assertEquals("info_cache", handler.getValue("cached_selection").jsonPrimitive.content)
+        val extraction = handler.getValue("cached_expression") as kotlinx.serialization.json.JsonArray
+        assertEquals("true", extraction[0].jsonPrimitive.content)
+        assertEquals(regex, extraction[1].jsonPrimitive.content)
+        val options = root.values.map { it.jsonObject }.single { "chkbox_scanner" in it }
+        assertEquals("true", options.getValue("chkbox_scanner").jsonPrimitive.content)
+        assertEquals("false", options.getValue("chkbox_proxy").jsonPrimitive.content)
+    }
     
     private val client = TestSseMcpClient()
     private val api = mockk<MontoyaApi>(relaxed = true)
@@ -803,18 +855,20 @@ class ToolsKtTest {
         }
 
         @Test
-        fun `get proxy history should return valid size limited JSON`() {
+        // >> 20261009 mniwa Verify that history JSON preserves complete requests and responses.
+        fun `get proxy history should preserve full messages in valid JSON`() {
             val proxy = mockk<Proxy>()
             val historyItem = mockk<ProxyHttpRequestResponse>()
             every { api.proxy() } returns proxy
             every { proxy.history() } returns listOf(historyItem)
 
             mockkStatic("net.portswigger.mcp.schema.SerializationKt")
-            every { historyItem.toSerializableForm() } returns HttpRequestResponse(
+            val original = HttpRequestResponse(
                 request = "GET / HTTP/1.1\r\nX-Long: ${"\\\"😀".repeat(2_000)}",
                 response = "HTTP/1.1 200 OK\r\n\r\n${"😀".repeat(3_000)}",
                 notes = "keep me"
             )
+            every { historyItem.toSerializableForm() } returns original
 
             runBlocking {
                 val text = client.callTool(
@@ -822,13 +876,14 @@ class ToolsKtTest {
                 ).expectTextContent()
                 val item = Json.parseToJsonElement(text).jsonObject
 
-                assertTrue(text.length <= 5_000)
+                assertTrue(text.length > 5_000)
                 assertEquals(setOf("request", "response", "notes"), item.keys)
-                assertTrue(item.getValue("request").jsonPrimitive.content.endsWith("... (truncated)"))
-                assertTrue(item.getValue("response").jsonPrimitive.content.endsWith("... (truncated)"))
+                assertEquals(original.request, item.getValue("request").jsonPrimitive.content)
+                assertEquals(original.response, item.getValue("response").jsonPrimitive.content)
                 assertEquals("keep me", item.getValue("notes").jsonPrimitive.content)
             }
         }
+        // << mniwa
     }
     
     @Nested

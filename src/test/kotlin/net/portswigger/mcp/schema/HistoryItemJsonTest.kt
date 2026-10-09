@@ -6,7 +6,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -19,20 +18,19 @@ class HistoryItemJsonTest {
     }
 
     @Test
-    fun `oversized history items remain valid bounded JSON`() {
-        val encoded = encodeHistoryItem(
-            HttpRequestResponse(
+    fun `large history items preserve full messages in valid JSON`() {
+        val original = HttpRequestResponse(
                 request = "\\\"😀".repeat(2_000),
                 response = "😀".repeat(3_000),
                 notes = "keep me"
             )
-        )
+        val encoded = encodeHistoryItem(original)
         val item = Json.parseToJsonElement(encoded).jsonObject
 
-        assertTrue(encoded.length <= 5_000)
+        assertTrue(encoded.length > 5_000)
         assertEquals(setOf("request", "response", "notes"), item.keys)
-        assertTrue(item.getValue("request").jsonPrimitive.content.endsWith("... (truncated)"))
-        assertTrue(item.getValue("response").jsonPrimitive.content.endsWith("... (truncated)"))
+        assertEquals(original.request, item.getValue("request").jsonPrimitive.content)
+        assertEquals(original.response, item.getValue("response").jsonPrimitive.content)
         assertEquals("keep me", item.getValue("notes").jsonPrimitive.content)
     }
 
@@ -45,11 +43,9 @@ class HistoryItemJsonTest {
     }
 
     @Test
-    fun `irreducible JSON fails instead of exceeding the limit`() {
-        val oversizedKey = "a".repeat(5_000)
-
-        assertThrows(IllegalStateException::class.java) {
-            limitHistoryItemJson("{\"$oversizedKey\":0}")
-        }
+    fun `long notes are preserved`() {
+        val notes = "a".repeat(6_000)
+        val item = Json.parseToJsonElement(encodeHistoryItem(HttpRequestResponse("request", "response", notes))).jsonObject
+        assertEquals(notes, item.getValue("notes").jsonPrimitive.content)
     }
 }
