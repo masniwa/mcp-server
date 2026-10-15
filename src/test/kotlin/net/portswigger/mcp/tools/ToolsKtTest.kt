@@ -46,6 +46,76 @@ import javax.swing.JTextArea
 
 class ToolsKtTest {
 
+    // >> 20261014 mniwa Test native Proxy IDs and Logger namespaces through real MCP dispatch with independent read permissions.
+    @Test
+    fun `direct Proxy ID lookup ignores row position and preserves the selected wire pair`() = runBlocking {
+        val proxy = api.proxy()
+        val http = api.http()
+        val first = mockk<ProxyHttpRequestResponse>(relaxed = true)
+        val target = mockk<ProxyHttpRequestResponse>(relaxed = true)
+        every { first.id() } returns 7
+        every { target.id() } returns 42
+        every { proxy.history() } returns listOf(target, first)
+        val request = mockk<HttpRequest>(relaxed = true)
+        every { target.finalRequest() } returns request
+        every { request.toString() } returns "GET /wire HTTP/1.1"
+        every { request.url() } returns "http://localhost:3000/wire"
+        every { request.httpService().host() } returns "localhost"
+        every { request.httpService().port() } returns 3000
+        every { request.httpService().secure() } returns false
+        every { target.time() } returns ZonedDateTime.parse("2026-10-14T00:00:00Z")
+        every { target.hasResponse() } returns true
+        every { target.originalResponse().toString() } returns "HTTP/1.1 200 OK"
+        val result = Json.parseToJsonElement(client.callTool("get_proxy_http_request_by_id", mapOf("requestId" to 42)).expectTextContent()).jsonObject
+        assertEquals("FOUND", result["status"]!!.jsonPrimitive.content)
+        assertEquals("GET /wire HTTP/1.1", result["proxy"]!!.jsonObject["request"]!!.jsonPrimitive.content)
+        assertEquals("HTTP/1.1 200 OK", result["proxy"]!!.jsonObject["response"]!!.jsonPrimitive.content)
+        every { target.hasResponse() } returns false
+        val pending = Json.parseToJsonElement(client.callTool("get_proxy_http_request_by_id", mapOf("requestId" to 42)).expectTextContent()).jsonObject
+        assertEquals("NO_RESPONSE_OBSERVED", pending["proxy"]!!.jsonObject["responseState"]!!.jsonPrimitive.content)
+        assertEquals("NOT_FOUND", Json.parseToJsonElement(client.callTool("get_proxy_http_request_by_id", mapOf("requestId" to 0)).expectTextContent()).jsonObject["status"]!!.jsonPrimitive.content)
+        every { proxy.history() } returns listOf(target, target)
+        assertEquals("AMBIGUOUS", Json.parseToJsonElement(client.callTool("get_proxy_http_request_by_id", mapOf("requestId" to 42)).expectTextContent()).jsonObject["status"]!!.jsonPrimitive.content)
+        verify(exactly = 0) { http.sendRequest(any<HttpRequest>()) }
+    }
+
+    @Test
+    fun `direct Logger ID lookup defaults to unsupported UI rather than returning an equal capture ID`() = runBlocking {
+        val http = api.http()
+        val handler = slot<burp.api.montoya.http.handler.HttpHandler>()
+        verify { http.registerHttpHandler(capture(handler)) }
+        val history = handler.captured as LoggerHttpHistory
+        history.recordRequest(42, "REPEATER", net.portswigger.mcp.schema.HttpService("localhost", 3000, false), "http://localhost:3000/test", "request-42", null)
+        val unsupported = Json.parseToJsonElement(client.callTool("get_logger_http_request_by_id", mapOf("requestId" to 1)).expectTextContent()).jsonObject
+        assertEquals("UNSUPPORTED_UI_ID", unsupported["status"]!!.jsonPrimitive.content)
+        val found = Json.parseToJsonElement(client.callTool("get_logger_http_request_by_id", mapOf("requestId" to 42, "idType" to "HTTP_MESSAGE_ID", "captureId" to history.status().captureId)).expectTextContent()).jsonObject
+        assertEquals("FOUND", found["status"]!!.jsonPrimitive.content)
+        assertEquals("request-42", found["logger"]!!.jsonObject["request"]!!.jsonPrimitive.content)
+        assertTrue(client.callTool("get_logger_http_request_by_id", mapOf("requestId" to 1, "idType" to "MCP_CAPTURE_ID")).expectTextContent().startsWith("Error:"))
+        verify(exactly = 0) { http.sendRequest(any<HttpRequest>()) }
+    }
+
+    @Test
+    fun `direct ID tools preserve independent history access denial`() = runBlocking {
+        mockkObject(config)
+        every { config.requireDataAccessApproval } returns true
+        every { config.alwaysAllowHttpHistory } returns true
+        every { config.alwaysAllowLoggerHistory } returns false
+        val previous = net.portswigger.mcp.security.DataAccessSecurity.approvalHandler
+        val approval = mockk<net.portswigger.mcp.security.DataAccessApprovalHandler>()
+        coEvery { approval.requestDataAccess(any(), any()) } returns false
+        net.portswigger.mcp.security.DataAccessSecurity.approvalHandler = approval
+        try {
+            val denied = Json.parseToJsonElement(client.callTool("get_logger_http_request_by_id", mapOf("requestId" to 1)).expectTextContent()).jsonObject
+            assertEquals("ACCESS_DENIED", denied["status"]!!.jsonPrimitive.content)
+            coVerify(exactly = 1) { approval.requestDataAccess(net.portswigger.mcp.security.DataAccessType.LOGGER_HISTORY, config) }
+            every { config.alwaysAllowHttpHistory } returns false
+            val proxyDenied = Json.parseToJsonElement(client.callTool("get_proxy_http_request_by_id", mapOf("requestId" to 1)).expectTextContent()).jsonObject
+            assertEquals("ACCESS_DENIED", proxyDenied["status"]!!.jsonPrimitive.content)
+        } finally { net.portswigger.mcp.security.DataAccessSecurity.approvalHandler = previous; unmockkObject(config) }
+    }
+    // << mniwa
+
     // >> 20261009 mniwa Exercise Logger pagination and filtering through MCP using the registered HTTP handler.
     @Test
     fun `logger tools expose cross tool metadata and apply filtering before pagination`() = runBlocking {
@@ -193,10 +263,12 @@ class ToolsKtTest {
 
         runBlocking {
             var attempts = 0
-            while (!serverStarted && attempts < 30) {
+            // >> 20261014 mniwa Allow ten seconds for the real test server to start under concurrent Burp load without weakening assertions.
+            while (!serverStarted && attempts < 100) {
                 delay(100)
                 attempts++
             }
+            // << mniwa
             if (!serverStarted) throw IllegalStateException("Server failed to start after timeout")
 
             client.connectToServer("http://127.0.0.1:${testPort}")
@@ -888,6 +960,31 @@ class ToolsKtTest {
     
     @Nested
     inner class CollaboratorToolsTests {
+        // >> 20261014 mniwa Validate registered status-tool behavior and ETA guidance through MCP without starting a scan.
+        @Test
+        fun `active scan status workflow preserves empty and lost handle semantics with ETA guidance`() = runBlocking {
+            val listed = Json.parseToJsonElement(client.callTool("get_active_scan_status", emptyMap()).expectTextContent()).jsonObject
+            assertEquals("true", listed["success"]!!.jsonPrimitive.content)
+            assertEquals("[]", listed["audits"].toString())
+            val missing = Json.parseToJsonElement(client.callTool("get_active_scan_status", mapOf("auditId" to "unknown")).expectTextContent()).jsonObject
+            assertEquals("AUDIT_NOT_TRACKED", missing["errorCode"]!!.jsonPrimitive.content)
+            val description = client.listTools().single { it.name == "get_active_scan_status" }.description!!
+            assertTrue(description.contains("timeEstimate"))
+            assertTrue(description.contains("no additional calibration scans"))
+            assertTrue(description.contains("not statistical confidence intervals"))
+            val supplied = mapOf("requestsPerInsertionPoint" to 40.0, "basis" to "Observed check evidence", "workflowSeconds" to 15.0, "effectiveConcurrency" to 1.0)
+            val withModel = Json.parseToJsonElement(client.callTool("get_active_scan_status", mapOf("auditId" to "unknown", "workload" to supplied)).expectTextContent()).jsonObject
+            assertEquals("AUDIT_NOT_TRACKED", withModel["errorCode"]!!.jsonPrimitive.content)
+            // >> 20261014 mniwa Verify default workload decoding through MCP and reject invalid timing before starting an audit.
+            assertTrue(description.contains("defaults to 34"))
+            val defaults = Json.parseToJsonElement(client.callTool("get_active_scan_status", mapOf("auditId" to "unknown", "workload" to mapOf("workflowSeconds" to 2.0))).expectTextContent()).jsonObject
+            assertEquals("AUDIT_NOT_TRACKED", defaults["errorCode"]!!.jsonPrimitive.content)
+            val invalidStart = client.callTool("start_active_scan", mapOf("host" to "localhost", "port" to 80, "protocol" to "http", "request" to "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n", "workload" to mapOf("workflowSeconds" to -1.0))).expectTextContent()
+            assertTrue(invalidStart.startsWith("Error: workflowSeconds must be finite and positive"))
+            // << mniwa
+            assertTrue(client.callTool("get_active_scan_status", mapOf("workload" to supplied)).expectTextContent().startsWith("Error: auditId is required"))
+        }
+        // << mniwa
         private val collaborator = mockk<Collaborator>()
         private val collaboratorClient = mockk<CollaboratorClient>()
         private val collaboratorServer = mockk<CollaboratorServer>()

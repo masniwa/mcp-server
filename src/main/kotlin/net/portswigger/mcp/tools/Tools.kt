@@ -1,4 +1,4 @@
-//v0.9.3.0
+//v0.9.3.14
 package net.portswigger.mcp.tools
 import burp.api.montoya.scanner.BuiltInAuditConfiguration
 import burp.api.montoya.scanner.AuditConfiguration
@@ -46,17 +46,19 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonNull
 
-internal class ActiveAuditRegistry {
-    private data class Entry(val audit: Audit, val host: String, val port: Int, val protocol: String, val path: String)
+// >> 20261014 mniwa Attach monotonic timing and conservative history-based estimates to existing read-only audit snapshots.
+internal class ActiveAuditRegistry(private val estimator: ScanTimeEstimator = ScanTimeEstimator()) {
+    private data class Entry(val audit: Audit, val host: String, val port: Int, val protocol: String, val path: String, val timing: ScanTimeEstimator.Run)
     private val entries = ConcurrentHashMap<String, Entry>()
 
-    fun register(audit: Audit, host: String, port: Int, protocol: String, path: String): String {
+    fun register(audit: Audit, host: String, port: Int, protocol: String, path: String, etaProfile: String? = null, method: String = "UNKNOWN", parameterShape: String = ""): String {
         val id = UUID.randomUUID().toString()
-        entries[id] = Entry(audit, host, port, protocol, path)
+        val key = etaProfile?.let { buildJsonArray { listOf(host, port.toString(), protocol, path.substringBefore('?') , it, method, parameterShape).forEach { add(it) } }.toString() }
+        entries[id] = Entry(audit, host, port, protocol, path, estimator.start(key))
         return id
     }
 
-    fun snapshot(id: String): JsonObject? {
+    fun snapshot(id: String, workload: ScanWorkload? = null): JsonObject? {
         val entry = entries[id] ?: return null
         val message = entry.audit.statusMessage()
         val normalized = message.trim().lowercase().removeSuffix(".")
@@ -73,7 +75,13 @@ internal class ActiveAuditRegistry {
             JsonNull
         }
         val errors = optionalMetric("auditErrorCount") { entry.audit.errorCount() }
-        val issues = optionalMetric("auditIssueCount") { entry.audit.issues().size }
+        // >> 20261014 mniwa Avoid the runtime-unsupported audit issues API during progress polling and keep the count explicitly unavailable.
+        val issues: JsonElement = JsonNull
+        unsupportedMetrics.add("auditIssueCount")
+        // << mniwa
+        val requests = entry.audit.requestCount()
+        val insertionPoints = entry.audit.insertionPointCount()
+        val estimate = estimator.observe(entry.timing, normalized, requests, (errors as? JsonPrimitive)?.content?.toIntOrNull(), insertionPoints, workload)
         return buildJsonObject {
             put("auditId", id)
             put("host", entry.host)
@@ -82,11 +90,12 @@ internal class ActiveAuditRegistry {
             put("path", entry.path)
             put("auditStatusMessage", message)
             put("completed", complete?.let(::JsonPrimitive) ?: JsonNull)
-            put("auditRequestCount", entry.audit.requestCount())
+            put("auditRequestCount", requests)
             put("auditErrorCount", errors)
-            put("auditInsertionPointCount", entry.audit.insertionPointCount())
+            put("auditInsertionPointCount", insertionPoints)
             put("auditIssueCount", issues)
             put("unsupportedMetrics", buildJsonArray { unsupportedMetrics.forEach { add(it) } })
+            put("timeEstimate", estimate)
         }
     }
 
@@ -94,6 +103,7 @@ internal class ActiveAuditRegistry {
         entries.keys.sorted().forEach { id -> snapshot(id)?.let { add(it) } }
     }
 }
+// << mniwa
 // << mniwa
 
 private suspend fun checkDataAccessOrDeny(
@@ -333,6 +343,13 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig, loggerHistory: Logg
 
     // >> 20261008 mniwa Describe authentication lockout preparation, prepared request scopes, and MCP configuration verification.
     // >> 20261009 mniwa Require verified login and logout stages instead of accepting invalid-credential responses alone.
+    // >> 20261009 mniwa Let agents generate native conditional-session and extension actions with explicit workflow prerequisites.
+    // >> 20261014 mniwa Require an explicit evidence-based session validation decision for every authenticated diagnostic target.
+    mcpTool<GenerateSessionValidationAction>("""Builds one native Check session is valid JSON action without applying settings or sending traffic. For every authentication-required diagnostic request, explicitly assess whether Check session is valid is needed and report whether it is used or omitted and why before declaring preparation complete or starting a scan. Base the decision on observed session expiry, the cost of repeated login versus validation, a safe probe using the same effective credentials, recovery capability, existing applicable rules, and any requirement to authenticate on every attempt. JWT usage, HTTP 200, or simply finding an existing login macro is not sufficient justification to omit this assessment. Distinguish unnecessary validation from validation that cannot yet be safely configured or verified; report missing evidence and do not claim authentication readiness when it cannot be maintained. Determine necessity from observed expiry or unnecessary repeated login. Compare valid and unauthenticated responses of an observed read-only probe using the same effective identity/token/cookies as the target; fixed known-good probe credentials must not hide invalid target state, and HTTP 200 alone is insufficient. Prefer validationAction=run_macro with an existing validationMacroSerialNumber. Derive lookFor, matchType (literal/regex), matchIndicates (valid/invalid), inspection locations and case sensitivity from observations. Supply recoveryMacroSerialNumber for an existing normal authentication macro when recovery is needed; recoveryParameterNames may update only observed token/state parameters, never attacked credentials or payloads. Verify JWT/header and cookie carry-forward separately, including CPH if needed. stopIfValid defaults false so valid sessions skip recovery but still perform cleanup, randomization and verification. issue_current_request requires currentRequestIsSafeAndRepeatable=true and stops later actions when valid: never use it for mutation/login, one-time-token consumption, or workflows needing later actions. requestCount is a positive interval used only when validateEveryNumRequests=true; begin with every-request validation. Macro references are lossless numeric JSON integers. Apply the action in a preserved full rule array using set_project_options, read back references, then verify valid/no-recovery and invalid/successful-recovery branches with at least five MCP/Logger tests each. Failure or a missing factor must stop progression, not bypass authentication. Conditional maintenance does not replace the login-target login/logout sequence.""") { toAction().toString() }
+    // << mniwa
+    mcpTool<GenerateInvokeExtensionAction>("""Builds one native Invoke a Burp extension JSON action without applying settings or sending requests. actionName must be the exact registered name of a currently installed loaded extension. For Request Randomizer the observed action is Randomizer; decide necessity from an observed uniqueness constraint or duplicate/conflict behavior. Replace only permitted uniqueness fields with the installed placeholder #RANDOM# and invoke the action before issuance and any terminal post-request macro. For email use the user-approved base local part plus +#RANDOM# before its unchanged approved domain; do not invent recipients or assume alias support. Verify character set, token length, numeric field types and Content-Length. #RANDOM# does not inherently emit digits: use a numeric marker only after support is observed in the loaded extension, otherwise report the unmet numeric constraint. A version may reuse one random value for all occurrences in a request; verify correlated fields remain consistent. Preserve scanner payloads by replacing only the literal marker, not the whole attacked value. Record actual wire values and created IDs for lookup, cleanup and later authentication; do not randomize those dependent identities independently. Verify five sends produce fresh values, no remaining markers, valid formats and unchanged unrelated fields. Randomization does not replace owned-data cleanup. Output fields are type=invoke_extension, enabled=true and action_name; preserve unrelated rules when applying.""") { toAction().toString() }
+    // << mniwa
+    // >> 20261013 mniwa Allow observed MCP delay-control steps while preserving business-request history requirements.
     mcpTool<SetProjectOptions>(
         """Sets project-level configuration in JSON format. This tool applies the supplied JSON to Burp project options.
 
@@ -341,7 +358,7 @@ Use the top-level wrapper project_options for project-level JSON.
 When writing sessions.macros.macros or sessions.session_handling_rules.rules, Burp replaces the entire array. You must preserve existing entries and send the full updated array. Do not send only the new entry.
 
 Macro creation rules:
-- Build macros only from actual Proxy HTTP History request/response pairs that already show the intended flow.
+- Build business-request macros only from actual Proxy HTTP History request/response pairs that already show the intended flow. The explicitly scoped delay-helper control-step exception below does not authorize inventing business requests.
 - You must not manually reconstruct requests when matching history entries already exist.
 - You must write the macro JSON explicitly and completely in Burp's saved shape.
 - You must not omit fields that Burp saves for the same shape.
@@ -467,6 +484,7 @@ Macro, CPH, and session handling rule usage split:
 - Do not use CPH when a normal macro-only configuration is sufficient.
 
 CPH inside a session-handling macro:
+- When importing cached extraction, keep its source before its destination. Do not blindly re-import an unordered full export to change unrelated Options: the extension can restore order after assigning fields and clear cached_selection. Prefer a partial Options-only update; when order was changed, read back cached_selection and re-import only the destination after ordering is established. Verify runtime capture with harmless probes before five complete workflow tests. A successful Import is not proof that the reference survived.
 - A macro request can contain CPH placeholders in its path, headers, or body. A session handling rule executes that macro; CPH processes its outgoing request. Macro-only parameter limitations are not a reason to abandon automation before considering this composition.
 - Start from the full observed request. Preserve unrelated headers and body fields. As an explicit exception to preserving the observed request as-is, replace only the dynamic destination value with the literal placeholder configured in the selected CPH handler and add an X-cphtarget header containing that handler's exact trigger. Derive identifiers from the observed workflow and the value's purpose, not from examples. Save the corresponding placeholder URL in the macro item as well.
 - Read existing CPH configuration with get_cph_config, generate and import the matching handler, and call get_cph_config again before enabling the rule. Compare enabled flags, placeholder, trigger, extraction mode, named capture, replacement backreference, source request, issuer, and tool scopes with the intended settings. Use this MCP readback for configuration inspection instead of launching Computer Use for a routine visual check. Enable the CPH tool scope that actually receives macro traffic and verify it in outgoing traffic; do not assume the invoking tool and macro traffic have the same tool flag.
@@ -480,9 +498,31 @@ CPH inside a session-handling macro:
 - Imported single_response is only an observed sample, never evidence of a current ID. Verify that live extraction follows changing IDs. If the saved sample ID is used repeatedly, inspect CPH runtime/cache handling and the actually loaded CPH extension version before changing the selection regex or declaring the ID unavailable. Reloading the MCP JAR does not reload CPH Python code.
 - Diagnose failures from the configuration you constructed and actual outgoing traffic. Check action order, macro references, parameter handling, pass-back, tool scopes, CPH trigger and placeholder before introducing a different extraction mode. Do not edit CPH source to work around an unproven configuration failure; use its existing supported capabilities.
 
-History-based request role rules:
+""" +
+        // >> 20261008 mniwa Evaluate cleanup by owned residual data and recovery without adding branches for harmless failed deletes.
+        """
+Registration cleanup evaluation:
+- Cleanup aims to prevent unwanted diagnostic data from accumulating. If a failed registration did not create data, failure of its corresponding DELETE, including a failed request with an unresolved ID placeholder, is acceptable and is not a workflow failure by itself. Do not add session-rule conditional branches solely to suppress such DELETE failures. Do not infer absence of persisted data from an error response alone. After scan completion, correlate Logger traffic, registration responses, unique submitted values and observed list/detail state, including Scanner-generated query/path variants rather than only the exact original URL. Identify actual leftover diagnostic records and delete only records proven to belong to this diagnostic run; preserve unrelated or ownership-unknown data. Distinguish the permitted final record retained for next-run cleanup from unintended leftovers, unless the user requests complete removal. Report discovered leftovers, verified recovery and any unresolved records separately; assess cleanup by actual unwanted residual data and recovery, not by DELETE failures alone.
+
+""" +
+        // << mniwa
+        // >> 20261014 mniwa Guide measured propagation waits and warn users about their scan duration impact before use.
+        """Asynchronous registration and delayed propagation:
+- Before configuring or using an HTTP sleep/delay helper for an ActiveScan workflow, warn the user that waiting is repeated for each applicable scanner request and can make the scan take substantially longer. State the configured delay per invocation, the number of waits per workflow and the affected reflection/stored-effect scan variants. If the expected invocation count is known, report the aggregate waiting budget as delay per invocation multiplied by expected invocations, accounting for different delays when applicable. Label this as cumulative waiting time, not a guaranteed wall-clock scan duration: concurrency, verification variants, extra checks and retries affect elapsed time. If invocation count or concurrency is unknown, say the total duration cannot yet be estimated reliably; do not invent an ETA. Give this warning before enabling or starting the workflow, and update it if the delay or affected variants change. This is an informational warning, not an additional approval requirement when execution is already authorized. Preserve required waits and completion checks.
+- Determine whether a create/update is asynchronous or its persisted effects appear later by correlating observed acceptance responses, task state, and the selected list/detail/page/media responses. Do not assume that an HTTP success response or an immediate empty list establishes completion or absence of stored effects.
+- Calibrate propagation time with five MCP write sends and five valid elapsed-time measurements from each acceptance response until that same task/object succeeds and becomes visible at the selected verification destination. Sort the five timings, discard exactly one shortest observation and one longest observation, and use the arithmetic mean of the remaining three as measuredSeconds. Ties still remove only one observation at each end. Retain all five timings, exclusions and the calculated mean. If a write fails, times out or never becomes visible, record that failure and do not substitute zero, an assumed duration or an average of fewer samples; report incomplete calibration until five valid measurements are established without blindly repeating an accepted write. Do not substitute task processing duration for destination visibility or hard-code a site-specific delay from an example. Add approximately 0.25 seconds of buffer to the trimmed mean. This estimate is not an upper bound; preserve the post-wait completion checks and recalibrate with the same five-sample rule when observed load or visibility changes.
+- Prefer an existing authorized HTTP helper that delays its response as an ordinary macro item; no new MCP sleep tool is required merely to replay such a request. Determine the helper's actual URL, method, query parameter, units and accepted type from the user-provided contract or observed traffic. Convert seconds to the required unit and round integer durations upward; for milliseconds use ceil((measuredSeconds + bufferSeconds) * 1000). Observe the final-duration helper request/response through MCP before saving it. This explicit exception permits a complete observed MCP/Logger transaction for this delay-control item even if Proxy history lacks it; all business requests retain their normal history requirements. Keep its request, absolute item URL and query-parameter preset values consistent.
+- Place the helper after the diagnostic write and before the first dependent task/ID/verification read in the run_post_request_macro sequence. A delay before the write, an assistant-side sleep, or a fixed batch of repeated GETs is not a substitute for a delay applied by Burp to every scanner request. Include only the authorized helper endpoint in any necessary send scope, keep the diagnostic rule scoped to the real target, and do not scan the helper or forward business credentials to it unnecessarily.
+- Waiting does not prove successful registration or propagation. After the delay, inspect the task corresponding to this write, distinguish pending/success/failure/deadline exceeded/unknown, obtain this task's confirmed object ID, and verify the selected persisted response. A task UUID is not a document/object ID. Never choose a list's first/last record, guess a sequential ID, or reuse a prior cached ID when the current task failed or is pending. Bind task IDs, object IDs and caches to the current execution/account; concurrent cases must not share values.
+- Keep stored-effect verification as the terminal response-producing step with pass_back=final_response; never return the helper's sleep response or an intermediate task-status response as the selected saved-content response. Reflection retains current_response. Preserve the existing separate reflection and per-verification scan configurations and the required cleanup order; delaying registration does not authorize cleanup after final verification.
+- Set a maximum overall wait and account for all macro steps and HTTP/MCP timeout budgets. If visibility remains pending after the measured delay, use only supported bounded additional waits/checks for the same task, or report the incomplete workflow and revise the measurement/configuration. Do not shorten a required delay solely to fit a timeout. After an MCP timeout, inspect Burp's ongoing execution and correlated Logger records before any new write; never blindly resend a possibly accepted registration.
+- Read back the macro/rule/CPH settings and verify at least five complete MCP workflow sends per final configuration, including actual delay, current task-to-object mapping, cleanup and the response passed back. Harmless helper probes and timing calibration alone are not full-workflow tests. Inspect Scanner-origin traffic separately to establish per-payload application. Successful normal-case timing does not guarantee every attack case completes within that delay.
+
+""" +
+        // << mniwa
+        """History-based request role rules:
 - Classify requests into exactly four roles: pre-processing, diagnostic target, stored-effect verification, and post-processing.
-- All four roles must be assigned only from actual observed Proxy HTTP History.
+- Business requests in all four roles must be assigned only from actual observed Proxy HTTP History. An authorized delay helper is an internal control step of its containing macro and follows the explicit observed-MCP-transaction exception above; it is not a fifth business role or an additional verification target.
 - Diagnostic target means the attacked request sent by the invoking Burp feature.
 - Pre-processing means requests required before the diagnostic target request is sent, including login, token acquisition, prerequisite registration, prerequisite data creation, and prerequisite cleanup.
 - Stored-effect verification applies only when the diagnostic target creates or updates persisted content. Its purpose is to detect vulnerabilities that may manifest when a separate list, detail, page, or media response exposes attack strings, images, or other payloads saved by the diagnostic request.
@@ -560,7 +600,13 @@ include_in_scope field semantics and strict requirements:
 - prefix: must be the exact absolute URL prefix for the diagnostic target request to which the rule applies.
 
 Rule actions schema:
+- Session probes must enforce the same effective authentication channels and privileges as the protected target. If both Authorization and cookies exist, a public whoami response from a still-valid cookie can hide an invalid Bearer. Validate genuine accepted/rejected states on an appropriate protected read-only endpoint; do not classify identity visibility alone as a valid session.
 - actions must be an array of action objects.
+- Supported native actions also include validate_session and invoke_extension. Preserve unrelated observed action types. Use generate_session_validation_action and generate_invoke_extension_action to construct these actions; the generators do not apply settings or send traffic.
+- For every authentication-required target, decide whether to use Check session is valid and explain the adoption or omission reason using observed expiry, login/validation cost, safe same-state probes, recovery feasibility, existing rules, and mandatory per-attempt authentication. Report unverified or unconfigurable validation separately from unnecessary validation; do not declare authentication readiness if maintenance is unresolved.
+- Check session is valid is appropriate only with observed validity criteria and the same effective authentication state as the target. Prefer a read-only validation macro. A valid session must not bypass later cleanup/randomization/verification: use stop_if_valid=false. Do not validate by issuing a mutation/login or consuming a one-time token. Choose recovery and update fields without overwriting diagnostic inputs; test both valid and invalid branches.
+- validate_session uses validation_action (run_macro or issue_current_request), macro_serial_number for the validation macro, inspect_http_headers, inspect_response_body, inspect_redirection_url, look_for, match_type (literal/regex), match_indicates (valid/invalid), case_sensitive, validate_every_num_requests, request_count, stop_if_valid, perform_action_if_invalid, action=run_macro, and nested run_macro_action with the recovery macro reference and cookie/parameter update fields. In-browser recovery is interactive, not autonomous. Preserve exact integer references and read back the saved action.
+- invoke_extension uses enabled, type=invoke_extension and action_name equal to the exact registered extension action. For observed duplicate-registration constraints, consider Randomizer and #RANDOM# only in permitted uniqueness fields; numeric fields require verified numeric replacement. Email randomization retains the approved base local part and domain with +#RANDOM# before @. Place the extension before terminal actions, preserve attack strings, capture sent identities for dependent requests, retain cleanup and verify five MCP/Logger sends.
 - Use the run_macro action object shape for pre-processing.
 - Use the run_post_request_macro action object shape for stored-effect verification.
 - Use the run_post_request_macro action object shape for post-processing.
@@ -639,6 +685,7 @@ Output requirements:
 
 
     // << mniwa
+    // << mniwa
     mcpTool<SetUserOptions>("Sets user-level configuration in JSON format. This will be merged with existing configuration. Make sure to export before doing this, so you know what the schema is. Make sure the JSON has a top level 'project_options' object!") {
         if (config.configEditingTooling) {
             api.logging().logToOutput("Setting user-level configuration: $json")
@@ -659,11 +706,20 @@ Output requirements:
         // >> 20261008 mniwa Return a stable audit identifier and expose read-only progress without computer use.
         // >> 20261009 mniwa Require separate audit completion and post-scan functional replay checks with observable workflow evidence.
         // >> 20261009 mniwa Check complete authentication workflow evidence at the scan entry point before starting an audit.
-        mcpTool<StartActiveScan>("Starts a Burp Suite active scan for the specified raw HTTP request. Returns auditId for get_active_scan_status. The scan uses the built-in legacy active audit checks; the optional config field is not applied. Before scanning a login diagnostic target, inspect the saved macros and applicable session handling rule and verify successful prerequisite login -> prerequisite logout -> diagnostic login -> post-request logout in actual outgoing traffic. Use valid observed test credentials only for prerequisite login; preserve attack strings in the diagnostic credential fields and pass back the diagnostic response with current_response. Confirm the rule applies to the target URL, Scanner, and diagnostic parameters, and complete at least five MCP workflow test sends verifying all four stages and subsequent account usability. A login-only prerequisite, repeated HTTP 401 responses, JWT/Bearer usage, an absent logout in Proxy history, or zero audit transport errors does not satisfy this gate. If supported logout or a required stage cannot be identified, automated, or verified, do not start this login scan; report the missing stage. Successful login/logout is not a universal counter reset or account unlock; if observed lockout/throttling persists or prerequisite authentication fails, do not continue invalid-credential attempts. For a logout diagnostic target, establish successful prerequisite login without logging out before that target. Before scanning, retain the original benign diagnostic request and its normal response under the intended macro/CPH/session-rule workflow. Keep those settings stable until this audit completes. After confirmed completion, check error/result information and resend the benign diagnostic request through that same intended workflow using an HTTP sender tool when authorized. Compare status and application/authentication/state results semantically; rotating IDs, tokens and timestamps need not be byte-identical. Inspect get_logger_http_history or its regex variant and capture status for actual macro/CPH sequence, substitutions, and cleanup. A successful resend confirms normal operation remains possible, not that every attack case was verified or no vulnerabilities exist. IDs are tracked only in the current MCP server lifetime; restarting or reloading the extension loses previous handles.") {
+        // >> 20261014 mniwa Explain comparable ETA profiles and model limitations at scan start and status reads.
+        // >> 20261008 mniwa Check Scanner-derived leftover records after completion and accept deletes for uncreated data failing.
+        mcpTool<StartActiveScan>("Starts a Burp Suite active scan for the specified raw HTTP request. Returns auditId for get_active_scan_status. Optional workload accepts workflowSeconds measured across the complete prerequisite -> diagnostic request -> post-request workflow (including sleeps once); its default requestsPerInsertionPoint is 34, an empirical average from ten completed audits (9011 requests / 265 detected insertion points), not a universal requirement. Once detected insertion points become available, the initial sequential estimate is 34 * insertion points * workflowSeconds; supply a different evidence-backed budget when appropriate. The start response includes timeEstimate, and later status reads retain this workload and replace the nominal rate with measured throughput. Do not use Scanned insertion points, which is a completion metric. Optional etaProfile is a non-secret equivalence label (1..128 letters, digits, underscore, period or hyphen) for comparable scans: reuse it only after verifying unchanged scan checks, macro/CPH/session rules, verification variant, helper waits, concurrency, throttling and application conditions; use a new label when any change. Never put credentials or attack payloads in it. The server further separates histories by target, method, parameter names/types and insertion-point count. Omit it when comparability cannot be established. The scan uses the built-in legacy active audit checks; the optional config field is not applied. For every authentication-required diagnostic request, explicitly assess whether Check session is valid is needed and report whether it is used or omitted and why before declaring preparation complete or starting a scan. Base the decision on observed session expiry, the cost of repeated login versus validation, a safe probe using the same effective credentials, recovery capability, existing applicable rules, and any requirement to authenticate on every attempt. JWT usage, HTTP 200, or simply finding an existing login macro is not sufficient justification to omit this assessment. Distinguish unnecessary validation from validation that cannot yet be safely configured or verified; report missing evidence and do not claim authentication readiness when it cannot be maintained. Before scanning a login diagnostic target, inspect the saved macros and applicable session handling rule and verify successful prerequisite login -> prerequisite logout -> diagnostic login -> post-request logout in actual outgoing traffic. Use valid observed test credentials only for prerequisite login; preserve attack strings in the diagnostic credential fields and pass back the diagnostic response with current_response. Confirm the rule applies to the target URL, Scanner, and diagnostic parameters, and complete at least five MCP workflow test sends verifying all four stages and subsequent account usability. A login-only prerequisite, repeated HTTP 401 responses, JWT/Bearer usage, an absent logout in Proxy history, or zero audit transport errors does not satisfy this gate. If supported logout or a required stage cannot be identified, automated, or verified, do not start this login scan; report the missing stage. Successful login/logout is not a universal counter reset or account unlock; if observed lockout/throttling persists or prerequisite authentication fails, do not continue invalid-credential attempts. For a logout diagnostic target, establish successful prerequisite login without logging out before that target. Before scanning, retain the original benign diagnostic request and its normal response under the intended macro/CPH/session-rule workflow. Keep those settings stable until this audit completes. After confirmed completion, check error/result information and resend the benign diagnostic request through that same intended workflow using an HTTP sender tool when authorized. Compare status and application/authentication/state results semantically; rotating IDs, tokens and timestamps need not be byte-identical. Inspect get_logger_http_history or its regex variant and capture status for actual macro/CPH sequence, substitutions, and cleanup. A successful resend confirms normal operation remains possible, not that every attack case was verified or no vulnerabilities exist. IDs are tracked only in the current MCP server lifetime; restarting or reloading the extension loses previous handles. Cleanup aims to prevent unwanted diagnostic data from accumulating. If a failed registration did not create data, failure of its corresponding DELETE, including a failed request with an unresolved ID placeholder, is acceptable and is not a workflow failure by itself. Do not add session-rule conditional branches solely to suppress such DELETE failures. Do not infer absence of persisted data from an error response alone. After scan completion, correlate Logger traffic, registration responses, unique submitted values and observed list/detail state, including Scanner-generated query/path variants rather than only the exact original URL. Identify actual leftover diagnostic records and delete only records proven to belong to this diagnostic run; preserve unrelated or ownership-unknown data. Distinguish the permitted final record retained for next-run cleanup from unintended leftovers, unless the user requests complete removal. Report discovered leftovers, verified recovery and any unresolved records separately; assess cleanup by actual unwanted residual data and recovery, not by DELETE failures alone.") {
+        // << mniwa
         // << mniwa
         // << mniwa
             // 20260925 mniwa >> Start an active scan by creating a built-in legacy active audit configuration,
             // converting the provided raw request into a Montoya HttpRequest, and adding it to the audit task.
+            // >> 20261014 mniwa Validate the estimation profile before creating a network-active audit.
+            // >> 20261014 mniwa Validate workload before starting the audit and retain it for immediate timing estimates.
+            workload?.validate()
+            // << mniwa
+            require(etaProfile == null || etaProfile.matches(Regex("[A-Za-z0-9_.-]{1,128}"))) { "etaProfile must be a non-secret label of 1..128 letters, digits, underscore, period or hyphen" }
+            // << mniwa
             val usesHttps = protocol.equals("https", ignoreCase = true)
 
             val allowed = runBlocking {
@@ -685,7 +741,7 @@ Output requirements:
 
             val audit = api.scanner().startAudit(auditConfiguration)
             audit.addRequest(httpRequest)
-            val auditId = activeAudits.register(audit, host, port, protocol, fixedContent.lineSequence().first().split(' ').getOrElse(1) { "" })
+            val auditId = activeAudits.register(audit, host, port, protocol, fixedContent.lineSequence().first().split(' ').getOrElse(1) { "" }, etaProfile, httpRequest.method(), buildJsonArray { httpRequest.parameters().map { it.type().name + ":" + it.name() }.sorted().forEach { add(it) } }.toString())
 
             api.logging().logToOutput(
                 "MCP Active Scan started: host=$host port=$port protocol=$protocol requestLength=${fixedContent.length}"
@@ -695,6 +751,9 @@ Output requirements:
             buildJsonObject {
                 put("status", "started")
                 put("auditId", auditId)
+                // >> 20261014 mniwa Include the initial estimate as soon as detected insertion points are exposed.
+                put("timeEstimate", activeAudits.snapshot(auditId, workload)?.get("timeEstimate") ?: JsonNull)
+                // << mniwa
                 put("host", host)
                 put("port", port)
                 put("protocol", protocol)
@@ -704,11 +763,13 @@ Output requirements:
                 put("auditStatusMessage", audit.statusMessage())
             }.toString()
         }
-        mcpTool<GetActiveScanStatus>("""Reads progress for Active Scans started by this MCP server without sending requests or changing scan state. Supply auditId returned by start_active_scan to read that audit, or omit it to list all tracked audits. Returns raw auditStatusMessage, request/error/insertion-point/issue counts, and completed. completed is true only for a recognized terminal success message, false for a recognized active/paused message, and null for an unrecognized message; do not treat null, a stable request count, or an empty list as completion. Optional counts unsupported by this Burp audit are null and named in unsupportedMetrics; null never means zero issues or errors. No progress percentage or ETA is provided. Unknown IDs return success=false with errorCode AUDIT_NOT_TRACKED; UI-started and pre-reload audits cannot be recovered by this tool. Poll with intervals rather than tight loops. Read the relevant audit's completed state before switching its session handling rules; use get_scanner_issues in bounded pages for issue details.""") {
+        mcpTool<GetActiveScanStatus>("""Reads progress for Active Scans started by this MCP server without sending requests or changing scan state. Supply auditId returned by start_active_scan to read that audit, or omit it to list all tracked audits. Returns raw auditStatusMessage, request/error/insertion-point/issue counts, and completed. completed is true only for a recognized terminal success message, false for a recognized active/paused message, and null for an unrecognized message; do not treat null, a stable request count, or an empty list as completion. auditIssueCount is unavailable in this bridge: Audit.issues() throws Currently unsupported in the tested Burp runtime and is not called during polling. Read get_scanner_issues separately for site-map findings; those are not an audit-specific count. Other optional counts unsupported by this Burp audit are null and named in unsupportedMetrics; null never means zero issues or errors. No progress percentage is provided. timeEstimate reports startedAt, estimatedAt, wall elapsedSeconds (including waits/pauses), remainingSeconds, predictedFinishAt, reason, method, comparableCompletedScans, recent rate, historical workload range and LOW confidence. Prefer workload supplied with a specific auditId: requestsPerInsertionPoint defaults to 34 and basis defaults to its empirical source (9011 requests / 265 detected insertion points across ten completed audits); these are low-confidence starting assumptions, not universal requirements. Override both when better evidence is available. Do not use Scanned insertion points. Supply workflowSeconds for an initial estimate; optional workflowSeconds is the measured full prerequisite -> target -> verification/cleanup duration, including helper sleeps exactly once. Optional effectiveConcurrency must be observed, not assumed from configured worker count. Optional lowerRequestsPerInsertionPoint and upperRequestsPerInsertionPoint must both enclose the central budget; do not invent bounds. Derive a budget from available completed scan evidence or documented checks, identifying configuration and insertion-type differences; no additional calibration scans are required or authorized. Burp exposes detected insertion-point count but not total remaining checks. The default 34 is empirical and may differ from the actual audit workload. Estimated total requests = ceil(insertion-point count * requestsPerInsertionPoint). Initially estimate total duration as requestsPerInsertionPoint * detected insertion-point count * workflowSeconds, assuming sequential execution when effectiveConcurrency is omitted. Return estimatedInitialTotalSeconds and initialConcurrencyAssumption separately from remainingSeconds; subtract already counted requests from the remaining budget. This initial sequential assumption is not measured concurrency. If an observed effectiveConcurrency is supplied, divide by it. Without workflowSeconds, wait for measured throughput. A positive rate observed over at least five seconds replaces the initial rate. Then use the actual recent rate to include scanner overhead, waits and concurrency without adding sleep again. Supply new workload when assumptions change; it is retained for that audit until replaced. A request budget is not a measured percent-complete value. Exceeded budget, unknown, paused, waiting, cancelled, interrupted/counter-reset, network errors or unavailable error metrics, no progress and missing evidence return unavailable with null time fields; only recognized successful completion gives remainingSeconds=0. Stall detection allows at least twice the measured workflow duration, or thirty seconds when none is supplied. Workload ranges are assumptions, not statistical confidence intervals. The old comparable-history mode remains optional when workload is omitted, but never run three extra scans merely to enable estimation. Poll periodically; unobserved pauses, phase changes and additional checks can invalidate predictions. Reload loses live handles and timing; do not reload an ongoing audit to deploy an ETA change. Unknown IDs return success=false with errorCode AUDIT_NOT_TRACKED; UI-started and pre-reload audits cannot be recovered by this tool. Poll with intervals rather than tight loops. Read the relevant audit's completed state before switching its session handling rules; use get_scanner_issues in bounded pages for issue details.""") {
+            require(workload == null || auditId != null) { "auditId is required when supplying workload" }
+            workload?.validate()
             if (auditId == null) {
                 buildJsonObject { put("success", true); put("audits", activeAudits.snapshots()) }.toString()
             } else {
-                val snapshot = activeAudits.snapshot(auditId)
+                val snapshot = activeAudits.snapshot(auditId, workload)
                 if (snapshot == null) {
                     buildJsonObject {
                         put("success", false)
@@ -725,6 +786,7 @@ Output requirements:
         // << mniwa
 
 
+        // << mniwa
         val collaboratorClient by lazy { api.collaborator().createClient() }
 
         mcpTool<GenerateCollaboratorPayload>(
@@ -766,6 +828,30 @@ Output requirements:
             }
         }
     }
+
+    // >> 20261014 mniwa Resolve exact history identifiers without equating Logger UI numbers to capture or message identifiers.
+    mcpTool<GetProxyHttpRequestById>("""Reads a single Proxy HTTP history transaction by the native UI Request ID (# column), using ProxyHttpRequestResponse.id(), never row position, paging offset or URL. requestId must be a non-negative integer. Optional captureId guards against using an ID after MCP extension reload; obtain it from get_logger_history_status, and note that it identifies this extension lifetime, not the Burp project. Returns status FOUND with the full final request sent by Proxy and its corresponding original response, service, URL, time, notes and responseState; original UI messages or manual edits may differ from this explicitly selected final-request/original-response view. NOT_FOUND means no matching entry exists in the current native history, not that it never existed. AMBIGUOUS refuses duplicate IDs. CAPTURE_MISMATCH refuses a stale extension context. Uses existing Proxy history permission. Read only; sends no requests and does not alter filters or settings. IDs refer to the connected Burp project; check project context before supplying an ID from another project.""") {
+        require(requestId >= 0) { "requestId must be non-negative" }
+        val currentCapture = loggerHistory.status().captureId
+        val allowed = runBlocking { checkDataAccessOrDeny(DataAccessType.HTTP_HISTORY, config, api, "HTTP history") }
+        if (!allowed) return@mcpTool encodeHistoryItem(RequestIdLookupResult("ACCESS_DENIED", "PROXY_UI", requestId.toLong(), currentCapture))
+        if (captureId != null && captureId != currentCapture) return@mcpTool encodeHistoryItem(RequestIdLookupResult("CAPTURE_MISMATCH", "PROXY_UI", requestId.toLong(), currentCapture))
+        val matches = api.proxy().history().filter { it.id() == requestId }
+        if (matches.size != 1) return@mcpTool encodeHistoryItem(RequestIdLookupResult(if (matches.isEmpty()) "NOT_FOUND" else "AMBIGUOUS", "PROXY_UI", requestId.toLong(), currentCapture))
+        val entry = matches.single()
+        val request = entry.finalRequest()
+        val service = request.httpService()
+        encodeHistoryItem(RequestIdLookupResult("FOUND", "PROXY_UI", requestId.toLong(), currentCapture,
+            proxy = ProxyRequestIdItem(entry.id(), net.portswigger.mcp.schema.HttpService(service.host(), service.port(), service.secure()),
+                request.url(), request.toString(), if (entry.hasResponse()) entry.originalResponse()?.toString() else null,
+                entry.annotations().notes(), entry.time().toString(), if (entry.hasResponse()) "RESPONSE_RECEIVED" else "NO_RESPONSE_OBSERVED")))
+    }
+    mcpTool<GetLoggerHttpRequestById>("""Reads one retained MCP Logger transaction by an explicitly named identifier namespace. idType defaults to LOGGER_UI: native Logger UI # IDs are not exposed by the supported Montoya API, so this mode returns UNSUPPORTED_UI_ID without guessing. Never replace a user-specified Logger UI ID with an equal MCP id or messageId: nested macro traffic can put them in a different order. For MCP_CAPTURE_ID use the id returned by get_logger_http_history; for HTTP_MESSAGE_ID use its messageId, an HTTP-handler correlation identifier. Both supported modes require captureId from get_logger_history_status or the original entry to prevent cross-reload ID reuse. requestId is a non-negative integer; HTTP_MESSAGE_ID must fit a signed 32-bit integer. FOUND returns the complete correlated Logger entry and capture metadata. NOT_RETAINED_OR_NOT_CAPTURED cannot distinguish eviction, oversized omission, pre-load traffic, native Logger-only traffic or an ID never observed; inspect captureStartedAt, droppedEntries and captureErrors. CAPTURE_MISMATCH identifies a stale capture; AMBIGUOUS refuses multiple matches. NO_RESPONSE_OBSERVED is not proof of a network failure. Requires existing independent Logger permission, even for a direct ID read. Reads send no requests, change no filters or settings, and do not recover native Logger pre-load history.""") {
+        val allowed = runBlocking { checkDataAccessOrDeny(DataAccessType.LOGGER_HISTORY, config, api, "Logger HTTP history") }
+        if (!allowed) return@mcpTool encodeHistoryItem(RequestIdLookupResult("ACCESS_DENIED", idType.name, requestId, loggerHistory.status().captureId))
+        encodeHistoryItem(loggerHistory.lookup(requestId, idType, captureId))
+    }
+    // << mniwa
 
     mcpPaginatedTool<GetProxyHttpHistory>("Displays items within the proxy HTTP history") {
         val allowed = runBlocking {
@@ -1466,13 +1552,21 @@ data class StartActiveScan(
     val host: String,
     val port: Int,
     val protocol: String,
-    val config: ActiveScanConfig? = null
+    val config: ActiveScanConfig? = null,
+    // >> 20261014 mniwa Accept a non-secret equivalence label only when workflow conditions have been verified unchanged.
+    val etaProfile: String? = null,
+    // >> 20261014 mniwa Accept full workflow timing at scan start using the empirical default insertion-point budget.
+    val workload: ScanWorkload? = null
+    // << mniwa
+    // << mniwa
 )
 // << mniwa
 
 // >> 20261008 mniwa Allow querying one tracked audit or listing current-server audits with no arguments.
 @Serializable
-data class GetActiveScanStatus(val auditId: String? = null)
+// >> 20261014 mniwa Supply evidence-backed workload assumptions to a tracked audit without running calibration scans.
+data class GetActiveScanStatus(val auditId: String? = null, val workload: ScanWorkload? = null)
+// << mniwa
 // << mniwa
 
 @Serializable
@@ -1483,6 +1577,13 @@ data class GetProxyHttpHistory(override val count: Int, override val offset: Int
 
 @Serializable
 data class GetProxyHttpHistoryRegex(val regex: String, override val count: Int, override val offset: Int) : Paginated
+
+// >> 20261014 mniwa Keep native UI identifiers distinct from extension capture and HTTP correlation identifiers.
+@Serializable
+data class GetProxyHttpRequestById(val requestId: Int, val captureId: String? = null)
+@Serializable
+data class GetLoggerHttpRequestById(val requestId: Long, val idType: LoggerRequestIdType = LoggerRequestIdType.LOGGER_UI, val captureId: String? = null)
+// << mniwa
 
 // >> 20261009 mniwa Define minimal history-compatible parameters for Logger traffic and capture status queries.
 @Serializable

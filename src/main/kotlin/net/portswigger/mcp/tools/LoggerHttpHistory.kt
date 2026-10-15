@@ -133,6 +133,24 @@ class LoggerHttpHistory(
     @Synchronized
     private fun recordError() { errors++ }
 
+    // >> 20261014 mniwa Resolve retained identifiers atomically and reject unsupported native UI or stale capture lookups.
+    @Synchronized
+    internal fun lookup(requestId: Long, idType: LoggerRequestIdType, expectedCaptureId: String?): RequestIdLookupResult {
+        require(requestId >= 0) { "requestId must be non-negative" }
+        if (expectedCaptureId != null && expectedCaptureId != captureId) return RequestIdLookupResult("CAPTURE_MISMATCH", idType.name, requestId, captureId, capture = status())
+        if (idType == LoggerRequestIdType.LOGGER_UI) return RequestIdLookupResult("UNSUPPORTED_UI_ID", idType.name, requestId, captureId, capture = status())
+        require(!expectedCaptureId.isNullOrBlank()) { "captureId is required for captured Logger identifiers" }
+        require(idType != LoggerRequestIdType.HTTP_MESSAGE_ID || requestId <= Int.MAX_VALUE) { "HTTP_MESSAGE_ID must fit a signed 32-bit integer" }
+        val matches = when (idType) {
+            LoggerRequestIdType.MCP_CAPTURE_ID -> listOfNotNull(items[requestId])
+            LoggerRequestIdType.HTTP_MESSAGE_ID -> items.values.filter { it.messageId.toLong() == requestId }
+            LoggerRequestIdType.LOGGER_UI -> emptyList()
+        }
+        return RequestIdLookupResult(when (matches.size) { 0 -> "NOT_RETAINED_OR_NOT_CAPTURED"; 1 -> "FOUND"; else -> "AMBIGUOUS" },
+            idType.name, requestId, captureId, logger = matches.singleOrNull(), capture = status())
+    }
+    // << mniwa
+
     @Synchronized
     internal fun snapshot(regex: Pattern? = null): List<LoggerHistoryItem> = items.values.sortedBy { it.id }.filter {
         regex == null || regex.matcher(it.request).find() || regex.matcher(it.response.orEmpty()).find() ||
@@ -144,4 +162,18 @@ class LoggerHttpHistory(
         retainedEntries = items.size, firstRetainedId = items.keys.minOrNull(), latestId = latestId,
         droppedEntries = dropped, captureErrors = errors, maxEntries = maxEntries, maxBytes = maxBytes, retainedBytes = bytes)
 }
+// << mniwa
+
+// >> 20261014 mniwa Return full request pairs with explicit identifier namespaces and non-success lookup states.
+@Serializable
+enum class LoggerRequestIdType { LOGGER_UI, MCP_CAPTURE_ID, HTTP_MESSAGE_ID }
+
+@Serializable
+data class ProxyRequestIdItem(val requestId: Int, val httpService: HttpService, val url: String,
+    val request: String, val response: String?, val notes: String?, val time: String, val responseState: String)
+
+@Serializable
+data class RequestIdLookupResult(val status: String, val idType: String, val requestId: Long,
+    val captureId: String, val proxy: ProxyRequestIdItem? = null, val logger: LoggerHistoryItem? = null,
+    val capture: LoggerHistoryStatus? = null)
 // << mniwa
