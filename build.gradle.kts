@@ -4,8 +4,11 @@ abstract class EmbedProxyJarTask : DefaultTask() {
     @get:InputFile
     abstract val shadowJarFile: RegularFileProperty
 
-    @get:InputDirectory
+    @get:Internal
     abstract val projectDir: DirectoryProperty
+
+    @get:InputFile
+    abstract val proxyJarInput: RegularFileProperty
 
     @get:Inject
     abstract val execOperations: ExecOperations
@@ -13,8 +16,8 @@ abstract class EmbedProxyJarTask : DefaultTask() {
     @TaskAction
     fun embedJar() {
         val shadowJar = shadowJarFile.get().asFile
-        val libsDir = projectDir.dir("libs").get().asFile
-        val proxyJarFile = File(libsDir, "mcp-proxy-all.jar")
+        val proxyJarFile = proxyJarInput.get().asFile
+        val libsDir = proxyJarFile.parentFile
 
         if (!proxyJarFile.exists()) {
             throw GradleException("Proxy JAR not found at: ${proxyJarFile.absolutePath}")
@@ -40,7 +43,15 @@ group = providers.gradleProperty("group").get()
 version = providers.gradleProperty("version").get()
 description = providers.gradleProperty("description").get()
 
+// Optional companion is a separate artifact: the existing Montoya extension keeps its entry point.
+val legacyBridge by sourceSets.creating
+val legacyApiDependency: Any = providers.gradleProperty("legacyApiJar").orNull?.let { files(it) }
+    ?: "net.portswigger.burp.extender:burp-extender-api:2.3"
+
 dependencies {
+    add(legacyBridge.compileOnlyConfigurationName, legacyApiDependency)
+    testImplementation(legacyBridge.output)
+    testImplementation(legacyApiDependency)
     compileOnly(libs.burp.montoya.api)
 
     implementation(libs.bundles.ktor.server)
@@ -51,6 +62,13 @@ dependencies {
     testImplementation(libs.bundles.test.framework)
     testImplementation(libs.bundles.ktor.test)
     testImplementation(libs.burp.montoya.api)
+}
+
+val legacyScanBridgeJar by tasks.registering(Jar::class) {
+    group = "build"
+    description = "Builds the optional public legacy-API cancelable scan companion"
+    archiveFileName.set("mcp-cancelable-scan-bridge.jar")
+    from(legacyBridge.output)
 }
 
 java {
@@ -134,6 +152,7 @@ tasks {
         dependsOn(shadowJar)
         shadowJarFile.set(shadowJar.flatMap { it.archiveFile })
         projectDir.set(layout.projectDirectory)
+        proxyJarInput.set(layout.projectDirectory.file("libs/mcp-proxy-all.jar"))
     }
 
     build {
