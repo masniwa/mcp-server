@@ -40,6 +40,9 @@ internal class ScanTimeEstimator(
         var lastState: String? = null
         var endedNanos: Long? = null
         var trainingEligible = true
+        // >> 20261008 mniwa Distinguish normal startup waiting from interruptions after audit execution begins.
+        var seenActive = false
+        // << mniwa
         var recorded = false
         var lastProgressNanos: Long? = null
         var workload: ScanWorkload? = null
@@ -61,7 +64,11 @@ internal class ScanTimeEstimator(
         val priorActive = run.lastState in setOf("scanning", "auditing", "running")
         if (run.lastCount == null || count != run.lastCount || !priorActive) run.lastProgressNanos = now
         if (run.lastCount != null && count < run.lastCount!!) run.trainingEligible = false
-        if (!active && !terminalSuccess) run.trainingEligible = false
+        // >> 20261008 mniwa Preserve estimation eligibility through initial queue states without restoring interrupted runs.
+        val initialWaiting = !run.seenActive && count == 0 && state in setOf("queued", "waiting", "starting")
+        if (!active && !terminalSuccess && !initialWaiting) run.trainingEligible = false
+        if (active) run.seenActive = true
+        // << mniwa
         if (!active || !priorActive || (run.lastCount != null && count < run.lastCount!!)) run.observations.clear()
         if (active) {
             run.observations.addLast(now to count)

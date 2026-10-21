@@ -46,6 +46,72 @@ import javax.swing.JTextArea
 
 class ToolsKtTest {
 
+    // >> 20261008 mniwa Verify session-rule container isolation, complete rule identity, compatible layouts, and the user-settings wrapper.
+    @Test
+    fun `session rule lookup ignores unrelated rules arrays`() = runBlocking {
+        every { api.burpSuite().exportProjectOptionsAsJson() } returns """
+            {
+              "project_options":{"sessions":{"session_handling_rules":{"rules":[]}}},
+              "proxy":{
+                "intercept_client_requests":{"rules":[{"enabled":true,"match_type":"http_method"}]},
+                "intercept_server_responses":{"rules":[{"enabled":false,"match_type":"status_code"}]}
+              },
+              "rules":[{"description":"unrelated","enabled":true}]
+            }
+        """.trimIndent()
+        val result = Json.parseToJsonElement(client.callTool("get_session_handling_rules", emptyMap()).expectTextContent())
+        assertEquals(Json.parseToJsonElement("[]"), result)
+    }
+
+    @Test
+    fun `session rule lookup preserves same name rules with different actions and scope`() = runBlocking {
+        val rules = """
+            [
+              {"description":"same name","enabled":true,"url_scope":"custom","tools_scope":["Scanner"],"include_in_scope":[{"prefix":"http://localhost/a"}],"actions":[{"type":"run_macro","macro_serial_number":11}]},
+              {"description":"same name","enabled":true,"url_scope":"custom","tools_scope":["Scanner"],"include_in_scope":[{"prefix":"http://localhost/a"}],"actions":[{"type":"run_macro","macro_serial_number":12}]},
+              {"description":"same name","enabled":true,"url_scope":"custom","tools_scope":["Scanner"],"include_in_scope":[{"prefix":"http://localhost/b"}],"actions":[{"type":"run_macro","macro_serial_number":11}]}
+            ]
+        """.trimIndent()
+        every { api.burpSuite().exportProjectOptionsAsJson() } returns
+            """{"project_options":{"sessions":{"session_handling_rules":{"rules":$rules}}}}"""
+        val result = Json.parseToJsonElement(client.callTool("get_session_handling_rules", emptyMap()).expectTextContent())
+        assertEquals(Json.parseToJsonElement(rules), result)
+    }
+
+    @Test
+    fun `session rule lookup supports nested flat and mirrored session containers`() = runBlocking {
+        val rule = """{"description":"native rule","enabled":true,"actions":[]}"""
+        val expected = Json.parseToJsonElement("[$rule]")
+        val options = listOf(
+            """{"project_options":{"sessions":{"session_handling_rules":{"rules":[$rule]}}}}""",
+            """{"sessions":{"session_handling_rules":{"rules":[$rule]}}}""",
+            """{"session_handling_rules":{"rules":[$rule]}}""",
+            """{"project_options":{"sessions":{"session_handling_rules":[$rule]}}}""",
+            """{"sessions":{"session_handling_rules":[$rule]}}""",
+            """{"session_handling_rules":[$rule]}""",
+            """{"project_options":{"sessions":{"session_handling_rules":{"rules":[$rule]}}},"session_handling_rules":[$rule]}"""
+        )
+        for (json in options) {
+            every { api.burpSuite().exportProjectOptionsAsJson() } returns json
+            val result = Json.parseToJsonElement(client.callTool("get_session_handling_rules", emptyMap()).expectTextContent())
+            assertEquals(expected, result, json)
+        }
+    }
+
+    @Test
+    fun `user options tool documents the native wrapper and imports only user options`() = runBlocking {
+        val description = client.listTools().single { it.name == "set_user_options" }.description!!
+        assertTrue(description.contains("'user_options'"))
+        assertFalse(description.contains("'project_options'"))
+        val json = """{"user_options":{}}"""
+        val burpSuite = api.burpSuite()
+        every { burpSuite.importUserOptionsFromJson(json) } just runs
+        client.callTool("set_user_options", mapOf("json" to json)).expectTextContent("User configuration has been applied")
+        verify(exactly = 1) { burpSuite.importUserOptionsFromJson(json) }
+        verify(exactly = 0) { burpSuite.importProjectOptionsFromJson(any()) }
+    }
+    // << mniwa
+
     // >> 20261014 mniwa Test native Proxy IDs and Logger namespaces through real MCP dispatch with independent read permissions.
     @Test
     fun `direct Proxy ID lookup ignores row position and preserves the selected wire pair`() = runBlocking {
@@ -168,6 +234,24 @@ class ToolsKtTest {
         assertEquals("false", options.getValue("chkbox_proxy").jsonPrimitive.content)
     }
     
+    @Test
+    fun `static CPH request correlation uses match groups without an extraction request`() = runBlocking {
+        val args = mapOf(
+            "tabName" to "local_headers", "dynamic" to false,
+            "issuerHost" to "localhost", "issuerPort" to 3000,
+            "modifyScopeExpression" to "cphtarget:local_headers",
+            "matchExpression" to "(Header: )(value)", "matchExpressionIsRegex" to true,
+            "replacementExpression" to "\\g<1>\\g<2>", "singleExtractExpression" to "",
+            "includeOptions" to false
+        )
+        val handler = Json.parseToJsonElement(client.callTool("generate_cph_import_config", args).expectTextContent())
+            .jsonObject.getValue("local_headers").jsonObject
+        assertEquals("false", handler.getValue("dynamic_checkbox").jsonPrimitive.content)
+        assertEquals("", handler.getValue("single_request").jsonPrimitive.content)
+        assertEquals("\\g<1>\\g<2>", (handler.getValue("static_expression") as kotlinx.serialization.json.JsonArray)[1].jsonPrimitive.content)
+        assertTrue(client.callTool("generate_cph_import_config", args + ("dynamic" to true)).expectTextContent().startsWith("Error:"))
+    }
+
     private val client = TestSseMcpClient()
     private val api = mockk<MontoyaApi>(relaxed = true)
     private val serverManager = KtorServerManager(api)
@@ -183,6 +267,9 @@ class ToolsKtTest {
             every { getBoolean("configEditingTooling") } returns true
             every { getBoolean("requireHttpRequestApproval") } returns false
             every { getBoolean("requireDataAccessApproval") } returns false
+            // >> 20261008 mniwa Supply the default credential-filter setting for configuration readback tests.
+            every { getBoolean("filterConfigCredentials") } returns true
+            // << mniwa
             every { getBoolean("_alwaysAllowHttpHistory") } returns false
             every { getBoolean("_alwaysAllowWebSocketHistory") } returns false
             every { getBoolean("_alwaysAllowOrganizer") } returns false
@@ -619,6 +706,85 @@ class ToolsKtTest {
             
             verify(exactly = 1) { base64Utils.decode(any<String>()) }
         }
+
+        // >> 20261008 mniwa Verify explicit UTF-8 byte dispatch, Unicode round trips, legacy byte strings, and invalid charset rejection.
+        @Test
+        fun `base64 UTF-8 mode preserves Japanese emoji and ASCII text`() = runBlocking {
+            val base64Utils = mockk<Base64Utils>()
+            val utilities = mockk<Utilities>()
+            every { api.utilities() } returns utilities
+            every { utilities.base64Utils() } returns base64Utils
+            mockkStatic(ByteArray::class)
+            try {
+                every { base64Utils.encodeToString(any<ByteArray>()) } answers {
+                    java.util.Base64.getEncoder().encodeToString(firstArg<ByteArray>().getBytes())
+                }
+                every { base64Utils.decode(any<ByteArray>()) } answers {
+                    val raw = java.util.Base64.getDecoder().decode(firstArg<ByteArray>().getBytes())
+                    mockk<ByteArray>().also { bytes -> every { bytes.getBytes() } returns raw }
+                }
+                for (content in listOf("本日の接続担当は、蝶ネクタイのペンギンです。", "ペンギン🐧とお寿司🍣", "test string")) {
+                    val raw = content.toByteArray(Charsets.UTF_8)
+                    val expected = java.util.Base64.getEncoder().encodeToString(raw)
+                    val sourceBytes = mockk<ByteArray>()
+                    val encodedBytes = mockk<ByteArray>()
+                    every { sourceBytes.getBytes() } returns raw
+                    every { encodedBytes.getBytes() } returns expected.toByteArray(Charsets.UTF_8)
+                    every { ByteArray.byteArray(*raw) } returns sourceBytes
+                    every { ByteArray.byteArray(*expected.toByteArray(Charsets.UTF_8)) } returns encodedBytes
+                    val encoded = client.callTool("base64_encode", mapOf("content" to content, "charset" to "UTF-8")).expectTextContent()
+                    assertEquals(expected, encoded)
+                    val decoded = client.callTool("base64_decode", mapOf("content" to encoded, "charset" to "utf-8")).expectTextContent()
+                    assertEquals(content, decoded)
+                }
+                verify(exactly = 3) { base64Utils.encodeToString(any<ByteArray>()) }
+                verify(exactly = 3) { base64Utils.decode(any<ByteArray>()) }
+                verify(exactly = 0) { base64Utils.encodeToString(any<String>()) }
+                verify(exactly = 0) { base64Utils.decode(any<String>()) }
+                for (name in listOf("base64_encode", "base64_decode")) {
+                    val description = client.listTools().single { it.name == name }.description!!
+                    assertTrue(description.contains("UTF-8"))
+                    assertTrue(description.contains("Omit charset"))
+                }
+            } finally {
+                unmockkStatic(ByteArray::class)
+            }
+        }
+
+        @Test
+        fun `base64 default mode preserves Montoya byte string behavior`() = runBlocking {
+            val base64Utils = mockk<Base64Utils>()
+            val utilities = mockk<Utilities>()
+            val bytes = mockk<ByteArray>()
+            val content = "é\u0000"
+            every { api.utilities() } returns utilities
+            every { utilities.base64Utils() } returns base64Utils
+            every { base64Utils.encodeToString(content) } returns "6QA="
+            every { base64Utils.decode("6QA=") } returns bytes
+            every { bytes.toString() } returns content
+            client.callTool("base64_encode", mapOf("content" to content)).expectTextContent("6QA=")
+            client.callTool("base64_decode", mapOf("content" to "6QA=")).expectTextContent(content)
+            verify(exactly = 1) { base64Utils.encodeToString(content) }
+            verify(exactly = 1) { base64Utils.decode("6QA=") }
+            verify(exactly = 0) { base64Utils.encodeToString(any<ByteArray>()) }
+            verify(exactly = 0) { base64Utils.decode(any<ByteArray>()) }
+        }
+
+        @Test
+        fun `base64 tools reject unsupported explicit charsets before invoking utilities`() = runBlocking {
+            val base64Utils = mockk<Base64Utils>()
+            val utilities = mockk<Utilities>()
+            every { api.utilities() } returns utilities
+            every { utilities.base64Utils() } returns base64Utils
+            for (name in listOf("base64_encode", "base64_decode")) {
+                for (charset in listOf("", "UTF8", "UTF-16", " UTF-8 ")) {
+                    val result = client.callTool(name, mapOf("content" to "dGVzdA==", "charset" to charset))
+                    assertTrue(result.expectTextContent().startsWith("Error: charset must be UTF-8 when specified"))
+                }
+            }
+            verify { base64Utils wasNot Called }
+        }
+        // << mniwa
         
         @Test
         fun `generate random string should work properly`() {
@@ -960,6 +1126,34 @@ class ToolsKtTest {
     
     @Nested
     inner class CollaboratorToolsTests {
+        // >> 20261008 mniwa Verify that the published MCP contract requires full replacement audits after configuration failures.
+        @Test
+        fun `published scan workflow tools require cancellation and a new full audit after invalid settings`() = runBlocking {
+            val tools = client.listTools().associateBy { it.name }
+            for (name in listOf("set_project_options", "start_active_scan", "get_active_scan_status")) {
+                val description = tools.getValue(name).description!!
+                assertTrue(description.contains("Cancel the affected audit through Burp UI"), name)
+                assertTrue(description.contains("new full ActiveScan from the beginning"), name)
+                assertTrue(description.contains("Pause -> edit -> Resume does not repeat earlier checks"), name)
+                assertTrue(description.contains("at least five MCP workflow test sends"), name)
+                assertTrue(description.contains("successful Extensions/MCP tests do not prove Scanner"), name)
+                assertTrue(description.contains("Ordinary user-requested Pause/Resume with unchanged valid settings"), name)
+                assertFalse(description.contains("testing.md"), name)
+            }
+        }
+        // << mniwa
+
+        @Test
+        fun `legacy scan tools are absent while Montoya scan tools remain available`() = runBlocking {
+            val tools = client.listTools().map { it.name }.toSet()
+            for (name in listOf("start_cancelable_active_scan", "get_cancelable_scan_capabilities",
+                "get_cancelable_active_scan_status", "cancel_active_scan")) {
+                assertFalse(name in tools, name)
+            }
+            for (name in listOf("start_active_scan", "get_active_scan_status", "get_scanner_issues")) {
+                assertTrue(name in tools, name)
+            }
+        }
         // >> 20261014 mniwa Validate registered status-tool behavior and ETA guidance through MCP without starting a scan.
         @Test
         fun `active scan status workflow preserves empty and lost handle semantics with ETA guidance`() = runBlocking {

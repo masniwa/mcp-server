@@ -100,6 +100,70 @@ class ScanTimeEstimatorTest {
         assertEquals(0, result["comparableCompletedScans"]!!.jsonPrimitive.int)
     }
 
+    // >> 20261008 mniwa Verify normal startup waits retain initial and measured estimates and successful history learning.
+    @Test fun `initial queue states allow workflow estimates rate correction and completed history`() {
+        listOf("queued", "waiting", "starting").forEachIndexed { index, waitingState ->
+            val run = estimator.start("initial-wait")
+            val model = ScanWorkload(50.0, "Observed workflow", workflowSeconds = 5.0)
+            val waiting = estimator.observe(run, waitingState, 0, 0, 2, model)
+            assertEquals("WAITING", reason(waiting))
+            assertEquals(JsonNull, waiting["remainingSeconds"])
+            advance(20)
+            assertEquals("WAITING", reason(estimator.observe(run, waitingState, 0, 0, 2)))
+            advance(2)
+            val initial = estimator.observe(run, "scanning", 0, 0, 2)
+            assertEquals("ESTIMATED", reason(initial))
+            assertEquals(500.0, initial["remainingSeconds"]!!.jsonPrimitive.double)
+            assertEquals("INSERTION_POINT_BUDGET_AND_WORKFLOW_TIME", initial["method"]!!.jsonPrimitive.content)
+            advance(10)
+            val measured = estimator.observe(run, "scanning", 20, 0, 2)
+            assertEquals("ESTIMATED", reason(measured))
+            assertEquals(40.0, measured["remainingSeconds"]!!.jsonPrimitive.double)
+            assertEquals("INSERTION_POINT_BUDGET_AND_RECENT_RATE", measured["method"]!!.jsonPrimitive.content)
+            advance(40)
+            val completed = estimator.observe(run, "finished", 100, 0, 2)
+            assertEquals("COMPLETED", reason(completed))
+            assertEquals(0.0, completed["remainingSeconds"]!!.jsonPrimitive.double)
+            assertEquals(72.0, completed["elapsedSeconds"]!!.jsonPrimitive.double)
+            assertEquals(index + 1, completed["comparableCompletedScans"]!!.jsonPrimitive.int)
+        }
+        val next = estimator.start("initial-wait")
+        assertEquals("INSUFFICIENT_RATE_OBSERVATIONS", reason(estimator.observe(next, "scanning", 0, 0, 2)))
+        advance(10)
+        val learned = estimator.observe(next, "scanning", 20, 0, 2)
+        assertEquals("ESTIMATED", reason(learned))
+        assertEquals("HISTORICAL_REQUEST_COUNT_AND_RECENT_RATE", learned["method"]!!.jsonPrimitive.content)
+        assertEquals(40.0, learned["remainingSeconds"]!!.jsonPrimitive.double)
+    }
+
+    @Test fun `startup pause or unknown state and waiting after execution remain ineligible`() {
+        val model = ScanWorkload(50.0, "Observed workflow", workflowSeconds = 5.0)
+        listOf("paused", "unknown").forEach { state ->
+            val run = estimator.start("interrupted-$state")
+            estimator.observe(run, state, 0, 0, 2, model)
+            estimator.observe(run, "queued", 0, 0, 2)
+            assertEquals("INTERRUPTED_OR_COUNTER_RESET", reason(estimator.observe(run, "running", 0, 0, 2)))
+            advance(10)
+            assertEquals("INTERRUPTED_OR_COUNTER_RESET", reason(estimator.observe(run, "running", 20, 0, 2)))
+            val completed = estimator.observe(run, "finished", 100, 0, 2)
+            assertEquals(0, completed["comparableCompletedScans"]!!.jsonPrimitive.int)
+        }
+        listOf("queued", "waiting", "starting").forEach { state ->
+            val alreadyExecuted = estimator.start("unobserved-start-$state")
+            assertEquals("WAITING", reason(estimator.observe(alreadyExecuted, state, 10, 0, 2, model)))
+            assertEquals("INTERRUPTED_OR_COUNTER_RESET", reason(estimator.observe(alreadyExecuted, "running", 11, 0, 2)))
+            val unobservedCompleted = estimator.observe(alreadyExecuted, "finished", 100, 0, 2)
+            assertEquals(0, unobservedCompleted["comparableCompletedScans"]!!.jsonPrimitive.int)
+            val run = estimator.start("post-start-$state")
+            estimator.observe(run, "scanning", 0, 0, 2, model)
+            assertEquals("WAITING", reason(estimator.observe(run, state, 0, 0, 2)))
+            assertEquals("INTERRUPTED_OR_COUNTER_RESET", reason(estimator.observe(run, "scanning", 1, 0, 2)))
+            val completed = estimator.observe(run, "finished", 100, 0, 2)
+            assertEquals(0, completed["comparableCompletedScans"]!!.jsonPrimitive.int)
+        }
+    }
+    // << mniwa
+
     @Test fun `counter reset prevents misleading rate and training history`() {
         histories()
         val run = estimator.start("same")

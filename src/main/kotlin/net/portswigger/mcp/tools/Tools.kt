@@ -1,4 +1,4 @@
-//v0.9.3.14
+//v0.9.3.20
 package net.portswigger.mcp.tools
 import burp.api.montoya.scanner.BuiltInAuditConfiguration
 import burp.api.montoya.scanner.AuditConfiguration
@@ -45,6 +45,17 @@ import burp.api.montoya.scanner.audit.Audit
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonNull
+
+// >> 20261008 mniwa Require a new full audit after correcting an invalid diagnostic configuration.
+private const val INVALID_SCAN_CONFIGURATION_RECOVERY = """
+
+Recovery after incorrect diagnostic settings:
+If an audit has already sent requests under incorrect scan-affecting settings and those settings require correction, Cancel the affected audit through Burp UI and verify cancellation before changing its shared configuration. Preserve partial results as incomplete; if normal completion races cancellation, the affected audit is still not accepted as a valid completed diagnosis. Identify every audit actually affected by shared settings and preserve unrelated scans. Let in-flight requests/macros finish and recover only proven diagnostic state before re-testing. Cancellation is not rollback.
+Read back the corrected final settings, perform at least five MCP workflow test sends per affected configuration, and verify actual input preservation, authentication, dynamic values, selected response and required post-processing. Then start a new full ActiveScan from the beginning for the entire affected target and reflection/stored-effect variant, using a new auditId. Record the old/new auditIds, cause, settings change, tests and final results separately. Pause -> edit -> Resume does not repeat earlier checks and must not substitute for cancellation and a new full audit. A successful benign resend, delayed cleanup, zero transport errors or later successful Scanner requests cannot validate checks issued under the incorrect configuration. If UI cancellation cannot be performed, report the blocker and request that exact manual operation; never silently resume the invalid audit or alter settings used by another active audit.
+Verify sender-specific behavior: successful Extensions/MCP tests do not prove Scanner response-cookie collection or post-request macro carry-forward. When diagnostic login creates a session, compare its newly issued session cookie with the actual subsequent logout request and confirm that session is invalidated. An unauthenticated probe sent without that new cookie does not prove logout of the diagnostic session. Re-check actual Scanner traffic immediately after the new audit starts; a further configuration failure requires the same cancel, correct, verify and new-full-audit procedure.
+This rule applies to confirmed incorrect scan-affecting settings, not every attack rejection or uncertain observation. A permitted DELETE failure after a failed creation with no created data, or a small allowed residual with otherwise correct settings, does not by itself require cancellation. Ordinary user-requested Pause/Resume with unchanged valid settings remains supported.
+"""
+// << mniwa
 
 // >> 20261014 mniwa Attach monotonic timing and conservative history-based estimates to existing read-only audit snapshots.
 internal class ActiveAuditRegistry(private val estimator: ScanTimeEstimator = ScanTimeEstimator()) {
@@ -302,13 +313,27 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig, loggerHistory: Logg
         api.utilities().urlUtils().decode(content)
     }
 
-    mcpTool<Base64Encode>("Base64 encodes the input string") {
-        api.utilities().base64Utils().encodeToString(content)
+    // >> 20261008 mniwa Preserve native byte-string behavior by default and offer explicit UTF-8 for Unicode text.
+    mcpTool<Base64Encode>("Base64 encodes content using Burp's Montoya utility without sending HTTP traffic. Omit charset to preserve the original Montoya String overload and Burp byte-string conversion; this default does not guarantee UTF-8 and may lose Unicode characters. For Japanese, emoji, or other Unicode text, supply charset=\"UTF-8\": content is explicitly converted to UTF-8 bytes and passed to Montoya's byte-array overload. UTF-8 is the only supported explicit charset (case-insensitive); other values return an error. Use the same explicit charset when decoding text. The returned value is Base64, not encryption.") {
+        require(charset == null || charset.equals("UTF-8", ignoreCase = true)) { "charset must be UTF-8 when specified" }
+        if (charset == null) {
+            api.utilities().base64Utils().encodeToString(content)
+        } else {
+            val bytes = burp.api.montoya.core.ByteArray.byteArray(*content.toByteArray(Charsets.UTF_8))
+            api.utilities().base64Utils().encodeToString(bytes)
+        }
     }
 
-    mcpTool<Base64Decode>("Base64 decodes the input string") {
-        api.utilities().base64Utils().decode(content).toString()
+    mcpTool<Base64Decode>("Base64 decodes content using Burp's Montoya utility without sending HTTP traffic. Omit charset to preserve the original Montoya String overload and ByteArray.toString() byte-string conversion; this default does not guarantee UTF-8 text. For Base64 containing Japanese, emoji, or other Unicode text encoded as UTF-8, supply charset=\"UTF-8\": the Base64 input is passed as bytes to Montoya and the decoded bytes are converted to UTF-8 text. UTF-8 is the only supported explicit charset (case-insensitive); other values return an error. This tool returns text, not a lossless binary-file format; omit charset when the original Burp byte-string behavior is required.") {
+        require(charset == null || charset.equals("UTF-8", ignoreCase = true)) { "charset must be UTF-8 when specified" }
+        if (charset == null) {
+            api.utilities().base64Utils().decode(content).toString()
+        } else {
+            val bytes = burp.api.montoya.core.ByteArray.byteArray(*content.toByteArray(Charsets.UTF_8))
+            api.utilities().base64Utils().decode(bytes).getBytes().toString(Charsets.UTF_8)
+        }
     }
+    // << mniwa
 
     mcpTool<GenerateRandomString>("Generates a random string of specified length and character set") {
         api.utilities().randomUtils().randomString(length, characterSet)
@@ -397,7 +422,7 @@ Macro item field semantics and strict requirements:
 - response: must be the full observed raw HTTP response, including headers, CRLFs, and body. This is the source response saved in the macro item.
 - status_code: must be the observed numeric HTTP status code. This is the HTTP status code of the saved response.
 - url: must be the exact observed absolute URL. This is the request URL of the macro item.
-- use_request_cookies: must be true. This controls whether the macro item sends the current macro cookie state with the request.
+- use_request_cookies: normally true, so the item sends the current macro cookie state. Exception: a login-form GET may use false when live evidence shows an existing authenticated cookie redirects that GET instead of returning the form needed for CSRF extraction. Preserve the observed request, isolate only that initial form GET, accept its response cookies, then send the successful login POST with true. Verify form retrieval, token derivation, successful login and target authentication in actual traffic; do not disable cookies on the whole macro.
 
 custom_parameters schema:
 - custom_parameters must be an array of extraction objects.
@@ -670,7 +695,7 @@ Session handling rule construction requirements from observed workflow:
 Output requirements:
 - Output only valid project options JSON.
 - Use fixed values exactly where required above.
-        """
+        """ + /* >> 20261008 mniwa Publish the mandatory full-rescan recovery policy. */ INVALID_SCAN_CONFIGURATION_RECOVERY /* << mniwa */
         // << mniwa
     ) {
         if (config.configEditingTooling) {
@@ -686,7 +711,8 @@ Output requirements:
 
     // << mniwa
     // << mniwa
-    mcpTool<SetUserOptions>("Sets user-level configuration in JSON format. This will be merged with existing configuration. Make sure to export before doing this, so you know what the schema is. Make sure the JSON has a top level 'project_options' object!") {
+    // >> 20261008 mniwa Use the native user_options wrapper when importing user-level settings.
+    mcpTool<SetUserOptions>("Sets user-level configuration in JSON format. This will be merged with existing configuration. Make sure to export before doing this, so you know what the schema is. Make sure the JSON has a top level 'user_options' object!") {
         if (config.configEditingTooling) {
             api.logging().logToOutput("Setting user-level configuration: $json")
             api.burpSuite().importUserOptionsFromJson(json)
@@ -696,6 +722,7 @@ Output requirements:
             toolingDisabledMessage
         }
     }
+    // << mniwa
 
     if (api.burpSuite().version().edition() == BurpSuiteEdition.PROFESSIONAL) {
         mcpPaginatedTool<GetScannerIssues>("Displays information about issues identified by the scanner") {
@@ -708,7 +735,7 @@ Output requirements:
         // >> 20261009 mniwa Check complete authentication workflow evidence at the scan entry point before starting an audit.
         // >> 20261014 mniwa Explain comparable ETA profiles and model limitations at scan start and status reads.
         // >> 20261008 mniwa Check Scanner-derived leftover records after completion and accept deletes for uncreated data failing.
-        mcpTool<StartActiveScan>("Starts a Burp Suite active scan for the specified raw HTTP request. Returns auditId for get_active_scan_status. Optional workload accepts workflowSeconds measured across the complete prerequisite -> diagnostic request -> post-request workflow (including sleeps once); its default requestsPerInsertionPoint is 34, an empirical average from ten completed audits (9011 requests / 265 detected insertion points), not a universal requirement. Once detected insertion points become available, the initial sequential estimate is 34 * insertion points * workflowSeconds; supply a different evidence-backed budget when appropriate. The start response includes timeEstimate, and later status reads retain this workload and replace the nominal rate with measured throughput. Do not use Scanned insertion points, which is a completion metric. Optional etaProfile is a non-secret equivalence label (1..128 letters, digits, underscore, period or hyphen) for comparable scans: reuse it only after verifying unchanged scan checks, macro/CPH/session rules, verification variant, helper waits, concurrency, throttling and application conditions; use a new label when any change. Never put credentials or attack payloads in it. The server further separates histories by target, method, parameter names/types and insertion-point count. Omit it when comparability cannot be established. The scan uses the built-in legacy active audit checks; the optional config field is not applied. For every authentication-required diagnostic request, explicitly assess whether Check session is valid is needed and report whether it is used or omitted and why before declaring preparation complete or starting a scan. Base the decision on observed session expiry, the cost of repeated login versus validation, a safe probe using the same effective credentials, recovery capability, existing applicable rules, and any requirement to authenticate on every attempt. JWT usage, HTTP 200, or simply finding an existing login macro is not sufficient justification to omit this assessment. Distinguish unnecessary validation from validation that cannot yet be safely configured or verified; report missing evidence and do not claim authentication readiness when it cannot be maintained. Before scanning a login diagnostic target, inspect the saved macros and applicable session handling rule and verify successful prerequisite login -> prerequisite logout -> diagnostic login -> post-request logout in actual outgoing traffic. Use valid observed test credentials only for prerequisite login; preserve attack strings in the diagnostic credential fields and pass back the diagnostic response with current_response. Confirm the rule applies to the target URL, Scanner, and diagnostic parameters, and complete at least five MCP workflow test sends verifying all four stages and subsequent account usability. A login-only prerequisite, repeated HTTP 401 responses, JWT/Bearer usage, an absent logout in Proxy history, or zero audit transport errors does not satisfy this gate. If supported logout or a required stage cannot be identified, automated, or verified, do not start this login scan; report the missing stage. Successful login/logout is not a universal counter reset or account unlock; if observed lockout/throttling persists or prerequisite authentication fails, do not continue invalid-credential attempts. For a logout diagnostic target, establish successful prerequisite login without logging out before that target. Before scanning, retain the original benign diagnostic request and its normal response under the intended macro/CPH/session-rule workflow. Keep those settings stable until this audit completes. After confirmed completion, check error/result information and resend the benign diagnostic request through that same intended workflow using an HTTP sender tool when authorized. Compare status and application/authentication/state results semantically; rotating IDs, tokens and timestamps need not be byte-identical. Inspect get_logger_http_history or its regex variant and capture status for actual macro/CPH sequence, substitutions, and cleanup. A successful resend confirms normal operation remains possible, not that every attack case was verified or no vulnerabilities exist. IDs are tracked only in the current MCP server lifetime; restarting or reloading the extension loses previous handles. Cleanup aims to prevent unwanted diagnostic data from accumulating. If a failed registration did not create data, failure of its corresponding DELETE, including a failed request with an unresolved ID placeholder, is acceptable and is not a workflow failure by itself. Do not add session-rule conditional branches solely to suppress such DELETE failures. Do not infer absence of persisted data from an error response alone. After scan completion, correlate Logger traffic, registration responses, unique submitted values and observed list/detail state, including Scanner-generated query/path variants rather than only the exact original URL. Identify actual leftover diagnostic records and delete only records proven to belong to this diagnostic run; preserve unrelated or ownership-unknown data. Distinguish the permitted final record retained for next-run cleanup from unintended leftovers, unless the user requests complete removal. Report discovered leftovers, verified recovery and any unresolved records separately; assess cleanup by actual unwanted residual data and recovery, not by DELETE failures alone.") {
+        mcpTool<StartActiveScan>("Starts a Burp Suite active scan for the specified raw HTTP request. Returns auditId for get_active_scan_status. Optional workload accepts workflowSeconds measured across the complete prerequisite -> diagnostic request -> post-request workflow (including sleeps once); its default requestsPerInsertionPoint is 34, an empirical average from ten completed audits (9011 requests / 265 detected insertion points), not a universal requirement. Once detected insertion points become available, the initial sequential estimate is 34 * insertion points * workflowSeconds; supply a different evidence-backed budget when appropriate. The start response includes timeEstimate, and later status reads retain this workload and replace the nominal rate with measured throughput. Do not use Scanned insertion points, which is a completion metric. Optional etaProfile is a non-secret equivalence label (1..128 letters, digits, underscore, period or hyphen) for comparable scans: reuse it only after verifying unchanged scan checks, macro/CPH/session rules, verification variant, helper waits, concurrency, throttling and application conditions; use a new label when any change. Never put credentials or attack payloads in it. The server further separates histories by target, method, parameter names/types and insertion-point count. Omit it when comparability cannot be established. The scan uses the built-in legacy active audit checks; the optional config field is not applied. Optional insertionPointParameters is an explicit allowlist of parameter VALUE insertion points, each with exact observed name and case-sensitive native type (for example JSON, URL, BODY, COOKIE). When present, only matching parsed parameter value offsets are passed to the audit; automatic insertion points including unlisted headers, paths, names and parameters are not selected. It is not an exclusion-only switch. This selects insertion points only: built-in whole-request checks and derived-URL probes can still run. Distinguish their responses from authenticated execution of the original target request. Every selector must match; duplicate selectors, empty selections/values, invalid or overlapping offsets fail before starting any audit. All occurrences matching a name/type are included; do not use it when only one of several same-name occurrences should be tested. Omit to preserve automatic selection. The start response reports insertionPointMode and selectedParameters without values. For password-change automation, keep password and confirmation fields present with known valid values but leave them out of this allowlist. Identify any current-password field from observed traffic, never invent it. Tell the user before starting and in the final report exactly which fields and other insertion-point classes are omitted, why, and what needs manual diagnosis. For update stored-effect verification, prevent values from a previous attempt from masquerading as this attempt: when needed, restore observed non-credential attributes in a separate prerequisite request, then preserve the diagnostic payload, verify an accepted change in an independent GET and verify that a rejected change leaves the restored state. Keep fixed password fields in the diagnostic request; do not copy prerequisite values over attacked inputs. Deliberate whole-request security probes that remove cookies or alter Origin must be distinguished by actual request changes and rejection reason from unintended authentication or CSRF failures in normal workflows. CSRF-header correlation does not establish coverage of attacks against that header itself. Excluding a password field alone does not prove repeatability: validate same-password reuse, session invalidation, fresh CSRF, login recovery, actual scanner substitutions and post-scan normal behavior. Never claim an ignored config argument applies exclusions or simulate exclusion by overwriting attacked payloads in a macro. Burp range-based points may require wire encoding verification, particularly structured JSON; verify actual sent bodies and do not count parser rejection as successful business execution. For every authentication-required diagnostic request, explicitly assess whether Check session is valid is needed and report whether it is used or omitted and why before declaring preparation complete or starting a scan. Base the decision on observed session expiry, the cost of repeated login versus validation, a safe probe using the same effective credentials, recovery capability, existing applicable rules, and any requirement to authenticate on every attempt. JWT usage, HTTP 200, or simply finding an existing login macro is not sufficient justification to omit this assessment. Distinguish unnecessary validation from validation that cannot yet be safely configured or verified; report missing evidence and do not claim authentication readiness when it cannot be maintained. Before scanning a login diagnostic target, inspect the saved macros and applicable session handling rule and verify successful prerequisite login -> prerequisite logout -> diagnostic login -> post-request logout in actual outgoing traffic. Use valid observed test credentials only for prerequisite login; preserve attack strings in the diagnostic credential fields and pass back the diagnostic response with current_response. Confirm the rule applies to the target URL, Scanner, and diagnostic parameters, and complete at least five MCP workflow test sends verifying all four stages and subsequent account usability. A login-only prerequisite, repeated HTTP 401 responses, JWT/Bearer usage, an absent logout in Proxy history, or zero audit transport errors does not satisfy this gate. If supported logout or a required stage cannot be identified, automated, or verified, do not start this login scan; report the missing stage. Successful login/logout is not a universal counter reset or account unlock; if observed lockout/throttling persists or prerequisite authentication fails, do not continue invalid-credential attempts. For a logout diagnostic target, establish successful prerequisite login without logging out before that target. Before scanning, retain the original benign diagnostic request and its normal response under the intended macro/CPH/session-rule workflow. Keep those settings stable until this audit completes. After confirmed completion, check error/result information and resend the benign diagnostic request through that same intended workflow using an HTTP sender tool when authorized. Compare status and application/authentication/state results semantically; rotating IDs, tokens and timestamps need not be byte-identical. Inspect get_logger_http_history or its regex variant and capture status for actual macro/CPH sequence, substitutions, and cleanup. A successful resend confirms normal operation remains possible, not that every attack case was verified or no vulnerabilities exist. IDs are tracked only in the current MCP server lifetime; restarting or reloading the extension loses previous handles. Cleanup aims to prevent unwanted diagnostic data from accumulating. If a failed registration did not create data, failure of its corresponding DELETE, including a failed request with an unresolved ID placeholder, is acceptable and is not a workflow failure by itself. Do not add session-rule conditional branches solely to suppress such DELETE failures. Do not infer absence of persisted data from an error response alone. After scan completion, correlate Logger traffic, registration responses, unique submitted values and observed list/detail state, including Scanner-generated query/path variants rather than only the exact original URL. Identify actual leftover diagnostic records and delete only records proven to belong to this diagnostic run; preserve unrelated or ownership-unknown data. Distinguish the permitted final record retained for next-run cleanup from unintended leftovers, unless the user requests complete removal. Report discovered leftovers, verified recovery and any unresolved records separately; assess cleanup by actual unwanted residual data and recovery, not by DELETE failures alone." + /* >> 20261008 mniwa Publish the mandatory full-rescan recovery policy. */ INVALID_SCAN_CONFIGURATION_RECOVERY /* << mniwa */) {
         // << mniwa
         // << mniwa
         // << mniwa
@@ -735,12 +762,14 @@ Output requirements:
             val service = HttpService.httpService(host, port, usesHttps)
             val httpRequest = HttpRequest.httpRequest(service, fixedContent)
 
+            val selectedOffsets = insertionPointParameters?.let { selectAuditParameters(httpRequest.parameters(), it, httpRequest.toByteArray().length()) }
+
             val auditConfiguration = AuditConfiguration.auditConfiguration(
                 BuiltInAuditConfiguration.LEGACY_ACTIVE_AUDIT_CHECKS
             )
 
             val audit = api.scanner().startAudit(auditConfiguration)
-            audit.addRequest(httpRequest)
+            addSelectedAuditRequest(audit, httpRequest, selectedOffsets)
             val auditId = activeAudits.register(audit, host, port, protocol, fixedContent.lineSequence().first().split(' ').getOrElse(1) { "" }, etaProfile, httpRequest.method(), buildJsonArray { httpRequest.parameters().map { it.type().name + ":" + it.name() }.sorted().forEach { add(it) } }.toString())
 
             api.logging().logToOutput(
@@ -758,12 +787,14 @@ Output requirements:
                 put("port", port)
                 put("protocol", protocol)
                 put("requestLength", fixedContent.length)
+                put("insertionPointMode", if (selectedOffsets == null) "AUTOMATIC" else "EXPLICIT_PARAMETER_VALUES")
+                insertionPointParameters?.let { selectors -> put("selectedParameters", buildJsonArray { selectors.forEach { selector -> add(buildJsonObject { put("name", selector.name); put("type", selector.type) }) } }) }
                 put("auditRequestCount", audit.requestCount())
                 put("auditInsertionPointCount", audit.insertionPointCount())
                 put("auditStatusMessage", audit.statusMessage())
             }.toString()
         }
-        mcpTool<GetActiveScanStatus>("""Reads progress for Active Scans started by this MCP server without sending requests or changing scan state. Supply auditId returned by start_active_scan to read that audit, or omit it to list all tracked audits. Returns raw auditStatusMessage, request/error/insertion-point/issue counts, and completed. completed is true only for a recognized terminal success message, false for a recognized active/paused message, and null for an unrecognized message; do not treat null, a stable request count, or an empty list as completion. auditIssueCount is unavailable in this bridge: Audit.issues() throws Currently unsupported in the tested Burp runtime and is not called during polling. Read get_scanner_issues separately for site-map findings; those are not an audit-specific count. Other optional counts unsupported by this Burp audit are null and named in unsupportedMetrics; null never means zero issues or errors. No progress percentage is provided. timeEstimate reports startedAt, estimatedAt, wall elapsedSeconds (including waits/pauses), remainingSeconds, predictedFinishAt, reason, method, comparableCompletedScans, recent rate, historical workload range and LOW confidence. Prefer workload supplied with a specific auditId: requestsPerInsertionPoint defaults to 34 and basis defaults to its empirical source (9011 requests / 265 detected insertion points across ten completed audits); these are low-confidence starting assumptions, not universal requirements. Override both when better evidence is available. Do not use Scanned insertion points. Supply workflowSeconds for an initial estimate; optional workflowSeconds is the measured full prerequisite -> target -> verification/cleanup duration, including helper sleeps exactly once. Optional effectiveConcurrency must be observed, not assumed from configured worker count. Optional lowerRequestsPerInsertionPoint and upperRequestsPerInsertionPoint must both enclose the central budget; do not invent bounds. Derive a budget from available completed scan evidence or documented checks, identifying configuration and insertion-type differences; no additional calibration scans are required or authorized. Burp exposes detected insertion-point count but not total remaining checks. The default 34 is empirical and may differ from the actual audit workload. Estimated total requests = ceil(insertion-point count * requestsPerInsertionPoint). Initially estimate total duration as requestsPerInsertionPoint * detected insertion-point count * workflowSeconds, assuming sequential execution when effectiveConcurrency is omitted. Return estimatedInitialTotalSeconds and initialConcurrencyAssumption separately from remainingSeconds; subtract already counted requests from the remaining budget. This initial sequential assumption is not measured concurrency. If an observed effectiveConcurrency is supplied, divide by it. Without workflowSeconds, wait for measured throughput. A positive rate observed over at least five seconds replaces the initial rate. Then use the actual recent rate to include scanner overhead, waits and concurrency without adding sleep again. Supply new workload when assumptions change; it is retained for that audit until replaced. A request budget is not a measured percent-complete value. Exceeded budget, unknown, paused, waiting, cancelled, interrupted/counter-reset, network errors or unavailable error metrics, no progress and missing evidence return unavailable with null time fields; only recognized successful completion gives remainingSeconds=0. Stall detection allows at least twice the measured workflow duration, or thirty seconds when none is supplied. Workload ranges are assumptions, not statistical confidence intervals. The old comparable-history mode remains optional when workload is omitted, but never run three extra scans merely to enable estimation. Poll periodically; unobserved pauses, phase changes and additional checks can invalidate predictions. Reload loses live handles and timing; do not reload an ongoing audit to deploy an ETA change. Unknown IDs return success=false with errorCode AUDIT_NOT_TRACKED; UI-started and pre-reload audits cannot be recovered by this tool. Poll with intervals rather than tight loops. Read the relevant audit's completed state before switching its session handling rules; use get_scanner_issues in bounded pages for issue details.""") {
+        mcpTool<GetActiveScanStatus>("""Reads progress for Active Scans started by this MCP server without sending requests or changing scan state. Supply auditId returned by start_active_scan to read that audit, or omit it to list all tracked audits. Returns raw auditStatusMessage, request/error/insertion-point/issue counts, and completed. completed is true only for a recognized terminal success message, false for a recognized active/paused message, and null for an unrecognized message; do not treat null, a stable request count, or an empty list as completion. auditIssueCount is unavailable in this bridge: Audit.issues() throws Currently unsupported in the tested Burp runtime and is not called during polling. Read get_scanner_issues separately for site-map findings; those are not an audit-specific count. Other optional counts unsupported by this Burp audit are null and named in unsupportedMetrics; null never means zero issues or errors. No progress percentage is provided. timeEstimate reports startedAt, estimatedAt, wall elapsedSeconds (including waits/pauses), remainingSeconds, predictedFinishAt, reason, method, comparableCompletedScans, recent rate, historical workload range and LOW confidence. Prefer workload supplied with a specific auditId: requestsPerInsertionPoint defaults to 34 and basis defaults to its empirical source (9011 requests / 265 detected insertion points across ten completed audits); these are low-confidence starting assumptions, not universal requirements. Override both when better evidence is available. Do not use Scanned insertion points. Supply workflowSeconds for an initial estimate; optional workflowSeconds is the measured full prerequisite -> target -> verification/cleanup duration, including helper sleeps exactly once. Optional effectiveConcurrency must be observed, not assumed from configured worker count. Optional lowerRequestsPerInsertionPoint and upperRequestsPerInsertionPoint must both enclose the central budget; do not invent bounds. Derive a budget from available completed scan evidence or documented checks, identifying configuration and insertion-type differences; no additional calibration scans are required or authorized. Burp exposes detected insertion-point count but not total remaining checks. The default 34 is empirical and may differ from the actual audit workload. Estimated total requests = ceil(insertion-point count * requestsPerInsertionPoint). Initially estimate total duration as requestsPerInsertionPoint * detected insertion-point count * workflowSeconds, assuming sequential execution when effectiveConcurrency is omitted. Return estimatedInitialTotalSeconds and initialConcurrencyAssumption separately from remainingSeconds; subtract already counted requests from the remaining budget. This initial sequential assumption is not measured concurrency. If an observed effectiveConcurrency is supplied, divide by it. Without workflowSeconds, wait for measured throughput. A positive rate observed over at least five seconds replaces the initial rate. Then use the actual recent rate to include scanner overhead, waits and concurrency without adding sleep again. Supply new workload when assumptions change; it is retained for that audit until replaced. A request budget is not a measured percent-complete value. Exceeded budget, unknown, paused, waiting, cancelled, interrupted/counter-reset, network errors or unavailable error metrics, no progress and missing evidence return unavailable with null time fields; only recognized successful completion gives remainingSeconds=0. Stall detection allows at least twice the measured workflow duration, or thirty seconds when none is supplied. Workload ranges are assumptions, not statistical confidence intervals. The old comparable-history mode remains optional when workload is omitted, but never run three extra scans merely to enable estimation. Poll periodically; unobserved pauses, phase changes and additional checks can invalidate predictions. Reload loses live handles and timing; do not reload an ongoing audit to deploy an ETA change. Unknown IDs return success=false with errorCode AUDIT_NOT_TRACKED; UI-started and pre-reload audits cannot be recovered by this tool. Poll with intervals rather than tight loops. Read the relevant audit's completed state before switching its session handling rules; use get_scanner_issues in bounded pages for issue details.""" + /* >> 20261008 mniwa Publish the mandatory full-rescan recovery policy. */ INVALID_SCAN_CONFIGURATION_RECOVERY /* << mniwa */) {
             require(workload == null || auditId != null) { "auditId is required when supplying workload" }
             workload?.validate()
             if (auditId == null) {
@@ -988,6 +1019,8 @@ Output requirements:
 
     Field semantics and strict requirements:
 
+    The dynamic extraction requirements below describe dynamic=true (the default). A supported exception is request-local static replacement with dynamic=false: it sends no extraction request and reads no cached response. Set matchExpressionIsRegex=true and replacementExpressionIsRegex=true; capture an observed value in the destination request and reference those match groups in replacementExpression. singleExtractExpression may be empty and extraction fields are unused. Limit the match to the intended headers, preserve the body and all unrelated bytes, retain the literal trigger and verify the actual outgoing result. For example, correlating a freshly updated CSRF cookie with its request header must use the current destination cookie, not a historical sample. Use simple numbered captures without inline flags or lazy groups for this CPH implementation; more complex regex forms are not verified. Never use this mode to restore attacked values in diagnostic parameters or to simulate scan exclusions.
+
     - auto_encode: must be false.
     - extract_choice_index: use 0 for single extraction; use 2 only when the supported cached mode is explicitly selected and its source is verified.
     - single_request: this is the HTTP request used as the source request for value extraction. When available, use the full raw HTTP request message from Proxy HTTP history, Logger, or another observed HTTP transaction source. Preserve the message as-is. Do not summarize it, paraphrase it, truncate it, or invent it. If unavailable, this field may be an empty string. When present, it should look like a real HTTP request beginning with a method such as GET, POST, PUT, DELETE, PATCH, HEAD, or OPTIONS.
@@ -998,7 +1031,7 @@ Output requirements:
     - enabled: must be true.
     - modify_type_choice_index: must be 0.
     - issuer: must be a three-element array in the form [isHttps, sourceHost, sourcePort]. Use false for HTTP and true for HTTPS. sourceHost must be the host name of the extraction source request. sourcePort must be the port number of the extraction source request.
-    - single_expression: must be a two-element array in the form [true, extractRegex]. The first element must always be true because extraction uses regex. extractRegex must be a non-empty Python-style regular expression used to extract the reusable dynamic value from the source response, or when necessary from the source request. The regex must include a named capture group, such as (?P<uuid>...) or (?<uuid>...). The named capture group should represent the actual reusable value, such as a CSRF token, state value, nonce, session-related token, hidden field value, or another dynamic parameter that must be replayed.
+    - single_expression: must be a two-element array in the form [true, extractRegex]. The first element must always be true because extraction uses regex. extractRegex must be a non-empty Python-style regular expression used to extract the reusable dynamic value from the source response. Dynamic single extraction reads the response; use the request-local static exception above for values already present in the destination request. The regex must include a named capture group, such as (?P<uuid>...) or (?<uuid>...). The named capture group should represent the actual reusable value, such as a CSRF token, state value, nonce, session-related token, hidden field value, or another dynamic parameter that must be replayed.
     - macro_expression: must be [true, ""].
     - modify_expression: must be a two-element array in the form [false, triggerValue]. The first element must always be false because the trigger must be a fixed literal string, not a regex. triggerValue must be a fixed literal trigger string in the form cphtarget:xxx. The prefix cphtarget: is fixed and mandatory. Only the xxx portion should be chosen dynamically based on the purpose of the extraction or replacement flow. xxx must be a short identifier, not a sentence or explanation. Prefer letters, digits, underscore, and hyphen only. This field defines only the trigger condition. Do not use this field to describe a host, path, endpoint, request, response, extracted value, placeholder, or replacement text. When a request containing this trigger is about to be sent, the handler sends the source request first, extracts a value from the source response, and then replaces the placeholder in the destination request.
     - forwarder: must be [false, "host", 80].
@@ -1023,7 +1056,7 @@ Output requirements:
     Behavior summary:
 
     1. Use single_request and single_response as the source transaction for extraction.
-    2. Use single_expression to extract a reusable dynamic value from single_response, or from single_request if truly necessary, by using a named capture group.
+    2. Use single_expression to extract a reusable dynamic value from single_response by using a named capture group. Request-local correlation instead uses the static exception described above.
     3. Use modify_expression as a fixed literal trigger string in the form cphtarget:xxx that activates the handler.
     4. Use match_expression as a fixed literal placeholder in the form {{yyyyy}} inside the destination request.
     5. Use static_expression to replace that placeholder with the captured value from single_expression.
@@ -1079,10 +1112,10 @@ Output requirements:
         require(modifyScopeExpression.isNotBlank()) { "modifyScopeExpression must not be blank." }
         require(matchExpression.isNotBlank()) { "matchExpression must not be blank. It should identify the placeholder or target text to replace." }
         require(replacementExpression.isNotBlank()) { "replacementExpression must not be blank." }
-        require(singleExtractExpression.isNotBlank()) { "singleExtractExpression must not be blank." }
+        require(!dynamic || singleExtractExpression.isNotBlank()) { "singleExtractExpression must not be blank for dynamic extraction." }
         require(issuerHost.isNotBlank()) { "issuerHost must not be blank." }
         require(issuerPort in 1..65535) { "issuerPort must be between 1 and 65535." }
-        if (replacementExpression.contains("\\g<")) {
+        if (dynamic && replacementExpression.contains("\\g<")) {
             require(singleExtractExpression.contains("(?P<")) {
                 "replacementExpression uses a named backreference, but singleExtractExpression does not contain a named capture group."
             }
@@ -1304,43 +1337,24 @@ private fun parseJsonObjectOrNull(text: String): JsonObject? =
         null
     }
 
+// >> 20261008 mniwa Read only session-handling containers and preserve every structurally distinct rule.
 private fun findSessionHandlingRules(projectOptionsJson: String): JsonArray {
-    // 20260930 mniwa >> Collect session handling rules from both nested and flat Burp project option paths safely.
     val root = parseJsonObjectOrNull(projectOptionsJson) ?: return JsonArray(emptyList())
-    val result = mutableListOf<JsonElement>()
-    val seen = linkedSetOf<String>()
+    val result = linkedSetOf<JsonObject>()
 
-    fun addRule(rule: JsonElement?) {
-        val ruleObject = rule as? JsonObject ?: return
-        val key = buildString {
-            append(ruleObject["description"]?.jsonPrimitive?.content ?: "")
-            append("|")
-            append(ruleObject["enabled"]?.jsonPrimitive?.content ?: "")
-            append("|")
-            append(ruleObject["url_scope"]?.toString() ?: "")
-            append("|")
-            append(ruleObject["tools_scope"]?.toString() ?: "")
-            append("|")
-            append(ruleObject["rule_actions"]?.toString() ?: "")
+    fun addRules(container: JsonElement) {
+        val rules = when (container) {
+            is JsonArray -> container
+            is JsonObject -> container["rules"] as? JsonArray
+            else -> null
         }
-        if (seen.add(key)) {
-            result.add(ruleObject)
-        }
+        rules?.forEach { rule -> (rule as? JsonObject)?.let { result.add(it) } }
     }
 
     fun collectRules(element: JsonElement?) {
         when (element) {
             is JsonObject -> {
-                element["session_handling_rules"]?.let { rulesElement ->
-                    if (rulesElement is JsonArray) {
-                        rulesElement.forEach { addRule(it) }
-                    }
-                }
-                element["rules"]?.let { rulesElement ->
-                    if (rulesElement is JsonArray) {
-                        rulesElement.forEach { addRule(it) }
-                    }
-                }
+                element["session_handling_rules"]?.let { addRules(it) }
                 element.values.forEach { collectRules(it) }
             }
             is JsonArray -> element.forEach { collectRules(it) }
@@ -1349,9 +1363,9 @@ private fun findSessionHandlingRules(projectOptionsJson: String): JsonArray {
     }
 
     collectRules(root)
-    return JsonArray(result)
-    // << mniwa
+    return JsonArray(result.toList())
 }
+// << mniwa
 
 private fun findMacros(projectOptionsJson: String): JsonArray {
     // 20260929 mniwa >> Collect macros from object-safe Burp project options paths and nested rule actions.
@@ -1514,10 +1528,12 @@ data class UrlEncode(val content: String)
 data class UrlDecode(val content: String)
 
 @Serializable
-data class Base64Encode(val content: String)
+// >> 20261008 mniwa Make UTF-8 text handling opt-in without changing existing Base64 callers.
+data class Base64Encode(val content: String, val charset: String? = null)
 
 @Serializable
-data class Base64Decode(val content: String)
+data class Base64Decode(val content: String, val charset: String? = null)
+// << mniwa
 
 @Serializable
 data class GenerateRandomString(val length: Int, val characterSet: String)
@@ -1553,6 +1569,7 @@ data class StartActiveScan(
     val port: Int,
     val protocol: String,
     val config: ActiveScanConfig? = null,
+    val insertionPointParameters: List<AuditParameterSelector>? = null,
     // >> 20261014 mniwa Accept a non-secret equivalence label only when workflow conditions have been verified unchanged.
     val etaProfile: String? = null,
     // >> 20261014 mniwa Accept full workflow timing at scan start using the empirical default insertion-point budget.
