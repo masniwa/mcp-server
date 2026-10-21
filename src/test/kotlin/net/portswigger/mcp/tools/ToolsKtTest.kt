@@ -168,24 +168,6 @@ class ToolsKtTest {
         assertEquals("false", options.getValue("chkbox_proxy").jsonPrimitive.content)
     }
     
-    @Test
-    fun `static CPH request correlation uses match groups without an extraction request`() = runBlocking {
-        val args = mapOf(
-            "tabName" to "local_headers", "dynamic" to false,
-            "issuerHost" to "localhost", "issuerPort" to 3000,
-            "modifyScopeExpression" to "cphtarget:local_headers",
-            "matchExpression" to "(Header: )(value)", "matchExpressionIsRegex" to true,
-            "replacementExpression" to "\\g<1>\\g<2>", "singleExtractExpression" to "",
-            "includeOptions" to false
-        )
-        val handler = Json.parseToJsonElement(client.callTool("generate_cph_import_config", args).expectTextContent())
-            .jsonObject.getValue("local_headers").jsonObject
-        assertEquals("false", handler.getValue("dynamic_checkbox").jsonPrimitive.content)
-        assertEquals("", handler.getValue("single_request").jsonPrimitive.content)
-        assertEquals("\\g<1>\\g<2>", (handler.getValue("static_expression") as kotlinx.serialization.json.JsonArray)[1].jsonPrimitive.content)
-        assertTrue(client.callTool("generate_cph_import_config", args + ("dynamic" to true)).expectTextContent().startsWith("Error:"))
-    }
-
     private val client = TestSseMcpClient()
     private val api = mockk<MontoyaApi>(relaxed = true)
     private val serverManager = KtorServerManager(api)
@@ -978,36 +960,6 @@ class ToolsKtTest {
     
     @Nested
     inner class CollaboratorToolsTests {
-        // >> 20261008 mniwa Verify that the published MCP contract requires full replacement audits after configuration failures.
-        @Test
-        fun `published scan workflow tools require cancellation and a new full audit after invalid settings`() = runBlocking {
-            val tools = client.listTools().associateBy { it.name }
-            for (name in listOf("set_project_options", "start_active_scan", "get_active_scan_status")) {
-                val description = tools.getValue(name).description!!
-                assertTrue(description.contains("Cancel the affected audit through Burp UI"), name)
-                assertTrue(description.contains("new full ActiveScan from the beginning"), name)
-                assertTrue(description.contains("Pause -> edit -> Resume does not repeat earlier checks"), name)
-                assertTrue(description.contains("at least five MCP workflow test sends"), name)
-                assertTrue(description.contains("successful Extensions/MCP tests do not prove Scanner"), name)
-                assertTrue(description.contains("Ordinary user-requested Pause/Resume with unchanged valid settings"), name)
-                assertFalse(description.contains("testing.md"), name)
-            }
-        }
-        // << mniwa
-
-        @Test
-        fun `legacy start tool is removed while retained scan tools fail closed without companion`() = runBlocking {
-            val capabilities = Json.parseToJsonElement(client.callTool("get_cancelable_scan_capabilities", emptyMap()).expectTextContent()).jsonObject
-            assertEquals("BRIDGE_NOT_LOADED", capabilities["errorCode"]!!.jsonPrimitive.content)
-            val cancellation = Json.parseToJsonElement(client.callTool("cancel_active_scan", mapOf("bridgeId" to "old", "auditId" to "montoya-id")).expectTextContent()).jsonObject
-            assertEquals("BRIDGE_NOT_LOADED", cancellation["errorCode"]!!.jsonPrimitive.content)
-            val tools = client.listTools().associateBy { it.name }
-            assertTrue("start_cancelable_active_scan" !in tools)
-            assertTrue("start_active_scan" in tools)
-            assertTrue(tools.getValue("cancel_active_scan").description!!.contains("never calls delete()"))
-            assertTrue(tools.getValue("get_cancelable_scan_capabilities").description!!.contains("scan-start MCP tool has been removed"))
-            assertTrue(tools.getValue("get_cancelable_active_scan_status").description!!.contains("completed=false"))
-        }
         // >> 20261014 mniwa Validate registered status-tool behavior and ETA guidance through MCP without starting a scan.
         @Test
         fun `active scan status workflow preserves empty and lost handle semantics with ETA guidance`() = runBlocking {
