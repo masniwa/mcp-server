@@ -1,39 +1,20 @@
-.gradle
-build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
-
-### IntelliJ IDEA ###
+.gradle/
+.kotlin/
+**/build/
+!/build/
+/build/*
+!/build/libs/
+/build/libs/*
+!/build/libs/burp-mcp-all.jar
+/runtime/
+/temp/
+/verification/
 .idea/
-*.iws
-*.iml
-*.ipr
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
-
-### Eclipse ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-### VS Code ###
 .vscode/
-
-### Mac OS ###
+*.iml
+*.log
+*.bk
+*.class
+*.pyc
+__pycache__/
 .DS_Store

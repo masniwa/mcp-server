@@ -9,7 +9,8 @@ import kotlin.reflect.KProperty
 
 private const val TARGET_SEPARATOR = "\n"
 
-class McpConfig(storage: PersistedObject, private val logging: Logging) {
+class McpConfig(storage: PersistedObject, private val logging: Logging, val diagnosticManaged:Boolean=false,
+                val diagnosticQuick:Boolean=false) {
 
     var enabled by storage.boolean(true)
     var configEditingTooling by storage.boolean(false)

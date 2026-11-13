@@ -43,7 +43,23 @@ group = providers.gradleProperty("group").get()
 version = providers.gradleProperty("version").get()
 description = providers.gradleProperty("description").get()
 
+val diagnosticProfile = providers.gradleProperty("diagnosticProfile").orElse("review")
+val generateDiagnosticProfile by tasks.registering {
+    inputs.property("profile",diagnosticProfile)
+    val output=layout.buildDirectory.dir("generated/diagnostic-profile")
+    outputs.dir(output)
+    doLast {
+        val profile=inputs.properties.getValue("profile").toString()
+        require(profile in setOf("review","quick")) { "diagnosticProfile must be review or quick" }
+        val directory=outputs.files.singleFile
+        directory.mkdirs()
+        directory.resolve("diagnostic-profile.properties").writeText("authorizationMode=${profile.uppercase()}\n")
+    }
+}
+sourceSets.main { resources.srcDir(generateDiagnosticProfile) }
+
 dependencies {
+    implementation(project(":diagnosis-runner"))
     compileOnly(libs.burp.montoya.api)
 
     implementation(libs.bundles.ktor.server)
@@ -83,6 +99,10 @@ application {
 
 tasks {
     test {
+        val verificationTemp = rootProject.layout.projectDirectory.dir("../temp/decoupling-verification/jvm-temp").asFile
+        systemProperty("java.io.tmpdir",verificationTemp.absolutePath)
+        doFirst { verificationTemp.mkdirs() }
+        dependsOn(":diagnosis-contract:test", ":diagnosis-runner:test")
         useJUnitPlatform()
         systemProperty("file.encoding", "UTF-8")
 

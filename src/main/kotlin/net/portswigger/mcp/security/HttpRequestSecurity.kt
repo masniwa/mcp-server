@@ -20,14 +20,14 @@ class SwingUserApprovalHandler : UserApprovalHandler {
         return suspendCoroutine { continuation ->
             SwingUtilities.invokeLater {
                 val message = buildString {
-                    appendLine("An MCP client is requesting to send an HTTP request to:")
+                    appendLine("MCPクライアントが次の送信先へのHTTPリクエスト送信を要求しています。")
                     appendLine()
-                    appendLine("Target: $hostname:$port")
+                    appendLine("送信先：$hostname:$port")
                     appendLine()
                 }
 
                 val options = arrayOf(
-                    "Allow Once", "Always Allow Host", "Always Allow Host:Port", "Deny"
+                    "今回だけ許可", "このホストを常に許可", "このホスト・ポートを常に許可", "拒否"
                 )
 
                 val burpFrame = findBurpFrame()
@@ -107,6 +107,9 @@ object HttpRequestSecurity {
     suspend fun checkHttpRequestPermission(
         hostname: String, port: Int, config: McpConfig, requestContent: String? = null, api: MontoyaApi? = null
     ): Boolean {
+        // Managed public send tools remain blocked. Only the compiled worker's
+        // validated workflow can reach this sender in the Quick profile.
+        if(config.diagnosticManaged && config.diagnosticQuick) return true
         if (!config.requireHttpRequestApproval) {
             return true
         }

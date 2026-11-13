@@ -30,7 +30,7 @@ class ClaudeDesktopProvider(private val logging: Logging, private val proxyJarMa
     override val name = "Claude Desktop"
     override val installButtonText = "Install to $name"
     override val confirmationText =
-        "Install to $name?\nThis will create an entry within $name's MCP configuration file ($claudeConfigFileName)"
+        "$name にインストールしますか？\n$name のMCP設定ファイル（$claudeConfigFileName）に設定を追加します。"
 
     override fun install(config: McpConfig): String {
         val proxyJarFile = proxyJarManager.getProxyJar()

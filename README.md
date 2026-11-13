@@ -1,148 +1,63 @@
-# Burp Suite MCP Server Extension
+# Burp MCP Server -re 1.4.15
 
-## Overview
+Burp SuiteとAIクライアントをMCPで接続し、診断用Macro・Session Handling Rule・CPHの設定、検証、ActiveScan、証拠保存、設定回復を管理する拡張です。通常運用は人間承認付きの **REVIEW** モードです。
 
-Integrate Burp Suite with AI Clients using the Model Context Protocol (MCP).
+## 配布物
 
-For more information about the protocol visit: [modelcontextprotocol.io](https://modelcontextprotocol.io/)
+検証済みの拡張JARを [build/libs/burp-mcp-all.jar](build/libs/burp-mcp-all.jar) に含めています。Java 21を使用してください。対応する [CPH v0.3](https://github.com/masniwa/burp-cph) と組み合わせて管理APIを利用します。
 
-## Features
-
-- Connect Burp Suite to AI clients through MCP
-- Automatic installation for Claude Desktop
-- Comes with packaged Stdio MCP proxy server
-
-## Usage
-
-- Install the extension in Burp Suite
-- Configure your Burp MCP server in the extension settings
-- Configure your MCP client to use the Burp SSE MCP server or stdio proxy
-- Interact with Burp through your client!
-
-## Installation
-
-### Prerequisites
-
-Ensure that the following prerequisites are met before building and installing the extension:
-
-1. **Java**: Java must be installed and available in your system's PATH. You can verify this by running `java --version` in your terminal.
-2. **jar Command**: The `jar` command must be executable and available in your system's PATH. You can verify this by running `jar --version` in your terminal. This is required for building and installing the extension.
-
-### Building the Extension
-
-1. **Clone the Repository**: Obtain the source code for the MCP Server Extension.
-   ```
-   git clone https://github.com/PortSwigger/mcp-server.git
-   ```
-
-2. **Navigate to the Project Directory**: Move into the project's root directory.
-   ```
-   cd mcp-server
-   ```
-
-3. **Build the JAR File**: Use Gradle to build the extension.
-   ```
-   ./gradlew embedProxyJar
-   ```
-
-   This command compiles the source code and packages it into a JAR file located in `build/libs/burp-mcp-all.jar`.
-
-### Loading the Extension into Burp Suite
-
-1. **Open Burp Suite**: Launch your Burp Suite application.
-2. **Access the Extensions Tab**: Navigate to the `Extensions` tab.
-3. **Add the Extension**:
-    - Click on `Add`.
-    - Set `Extension Type` to `Java`.
-    - Click `Select file ...` and choose the JAR file built in the previous step.
-    - Click `Next` to load the extension.
-
-Upon successful loading, the MCP Server Extension will be active within Burp Suite.
-
-## Configuration
-
-### Configuring the Extension
-Configuration for the extension is done through the Burp Suite UI in the `MCP` tab.
-- **Toggle the MCP Server**: The `Enabled` checkbox controls whether the MCP server is active.
-- **Enable config editing**: The `Enable tools that can edit your config` checkbox allows the MCP server to expose tools which can edit Burp configuration files.
-- **Advanced options**: You can configure the port and host for the MCP server. By default, it listens on `http://127.0.0.1:9876`.
-
-### Claude Desktop Client
-
-To fully utilize the MCP Server Extension with Claude, you need to configure your Claude client settings appropriately.
-The extension has an installer which will automatically configure the client settings for you.
-
-1. Currently, Claude Desktop only support STDIO MCP Servers
-   for the service it needs.
-   This approach isn't ideal for desktop apps like Burp, so instead, Claude will start a proxy server that points to the
-   Burp instance,  
-   which hosts a web server at a known port (`localhost:9876`).
-
-2. **Configure Claude to use the Burp MCP server**  
-   You can do this in one of two ways:
-
-    - **Option 1: Run the installer from the extension**
-      This will add the Burp MCP server to the Claude Desktop config.
-
-    - **Option 2: Manually edit the config file**  
-      Open the file located at `~/Library/Application Support/Claude/claude_desktop_config.json`,
-      and replace or update it with the following:
-      ```json
-      {
-        "mcpServers": {
-          "burp": {
-            "command": "<path to Java executable packaged with Burp>",
-            "args": [
-                "-jar",
-                "/path/to/mcp/proxy/jar/mcp-proxy-all.jar",
-                "--sse-url",
-                "<your Burp MCP server URL configured in the extension>"
-            ]
-          }
-        }
-      }
-      ```
-
-3. **Restart Claude Desktop** - assuming Burp is running with the extension loaded.
-
-## Manual installations
-If you want to install the MCP server manually you can either use the extension's SSE server directly or the packaged
-Stdio proxy server.
-
-### SSE MCP Server
-To use the SSE server directly, provide the configured server URL to your MCP client:
-```
-http://127.0.0.1:9876
+```text
+installation/
+├─ mcp-server/
+│  ├─ build/libs/burp-mcp-all.jar
+│  └─ runtime/                       # 初回ロード時にローカル生成
+└─ burp-cph/
+   ├─ CustomParamHandler_marged_api_v0.2.py
+   ├─ CPH_API_v0_2.py
+   ├─ CPH_Managed.py
+   └─ runtime/cph-connection.json
 ```
 
-### Stdio MCP Proxy Server
-The source code for the proxy server can be found here: [MCP Proxy Server](https://github.com/PortSwigger/mcp-proxy)
+CPHのファイル名は配置互換性のためv0.2のままですが、ロード後の表示名はv0.3です。
 
-In order to support MCP Clients which only support Stdio MCP Servers, the extension comes packaged with a proxy server for
-passing requests to the SSE MCP server extension.
+## 導入
 
-If you want to use the Stdio proxy server you can use the extension's installer option to extract the proxy server jar.
-Once you have the jar you can add the following command and args to your client configuration:
+1. 両リポジトリを上記の兄弟フォルダーとして配置します。
+2. BurpのExtensionsでJava拡張として `build/libs/burp-mcp-all.jar` をロードします。表示名は `Burp MCP Server -re` です。
+3. MCPが `runtime/settings.json` とローカル専用の資格情報を生成してから、CPH側のREADMEに従ってCPHをロードします。
+4. MCPタブの実効モードがREVIEWであることを確認します。必要な設定編集・履歴・Logger参照の許可はオペレーターが操作します。
+5. AIクライアントの接続先は既定で `http://127.0.0.1:9876` です。CPHの設定APIは `127.0.0.1:17866` です。外部ホストへの公開を前提にしません。
+
+実機確認済みの能力はオペレーターの設定であり、初期値は空です。`runtime/settings.json` の `verifiedCapabilities` は、その環境で実際に確認した能力だけを登録してください。過去の診断用runtimeや資格情報をコピーして準備完了と扱わないでください。
+
+詳細は [LOAD.md](LOAD.md)、実行サービスは [diagnosis-runner/README.md](diagnosis-runner/README.md) を参照してください。各Toolの入力条件・手順・確認方法は公開Tool Descriptionにあります。
+
+## ソースからのビルド
+
+Java 21のJDKを用意し、リポジトリ直下でGradle Wrapperを実行します。
+
+```powershell
+.\gradlew.bat embedProxyJar
 ```
-/path/to/packaged/burp/java -jar /path/to/proxy/jar/mcp-proxy-all.jar --sse-url http://127.0.0.1:9876
-```
 
-If you modify the proxy source, rebuild and copy it into this project before packaging the extension:
 ```bash
-# From mcp-proxy
-./gradlew shadowJar
-cp build/libs/mcp-proxy-all.jar /path/to/mcp-server/libs/mcp-proxy-all.jar
-
-# From mcp-server
 ./gradlew embedProxyJar
 ```
 
-### Creating / modifying tools
+本体は `diagnosis-contract` と `diagnosis-runner` を参照します。`libs/mcp-proxy-all.jar` は組込みproxyの入力です。これらを除いた単一モジュールとしてのビルドは想定しません。
 
-Tools are defined in `src/main/kotlin/net/portswigger/mcp/tools/Tools.kt`. To define new tools, create a new serializable
-data class with the required parameters which will come from the LLM.
+## 診断時の境界
 
-The tool name is auto-derived from its parameters data class. A description is also needed for the LLM. You can return
-a string or a `List<ContentBlock>` to provide data back to the LLM.
+AIは観測済みの通信から対象別の設定案を作り、公開MCPの `diagnostic_job` を使います。直接の設定Import・送信・Scan開始で管理境界を迂回しません。準備と実行の人間承認、必要な分岐ごとの5回以上の検証、全証拠の意味確認を行います。設定ImportやHTTP 200だけでは認証・置換・診断の成立を証明しません。
 
-Extend the Paginated interface to add auto-pagination support.
+新しい `execute` の前に現在の `executionId` へ `plan_next` を行い、依頼順の残対象を `nextTargetsJson` で宣言します。最後の対象にもJSON文字列 `"[]"` を指定します。Scan中はAIが次の設定を作成して `diagnostic_draft` の `submit_next` へ提出し、サービスが静的検査します。静的合格を実機検証や実行承認の代わりにしません。
+
+## この公開ツリーの範囲
+
+運用・ビルドに必要なソース、設定定義、Wrapper、依存JAR、配備JAR、ライセンスと導入文書を含みます。開発用テスト、診断Project、HTTP記録、検証fixture、実行台帳、個別環境のruntime、キャッシュ、バックアップは含みません。このツリーでテストTaskを実行しても、開発環境の全回帰を再実行したことにはなりません。
+
+配布JARのSHA-256は `e308e84df618fd7517671f4a4f0c0335d7b138a5a26c5870a860c2a0a6444f48` です。MCP 1.4.15とCPH v0.3は開発環境の全688テスト合格後に配備された版です。新しい診断対象の動作保証は対象別の検証で確認してください。
+
+## ライセンス
+
+[PortSwigger/mcp-server](https://github.com/PortSwigger/mcp-server)を基にした改修です。GNU GPL v3の条件と著作権表示は [LICENSE](LICENSE) を参照してください。

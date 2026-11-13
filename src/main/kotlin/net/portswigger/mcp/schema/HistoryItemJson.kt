@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import net.portswigger.diagnosis.contract.asciiJson
 
 // 20261007 mniwa >> Disable history item truncation and return full JSON.
 // private const val MAX_HISTORY_ITEM_LENGTH = 5_000
@@ -13,7 +14,7 @@ import kotlinx.serialization.json.JsonPrimitive
 
 // 20261007 mniwa >> Return full history item JSON without truncation.
 internal inline fun <reified T> encodeHistoryItem(item: T): String =
-    Json.encodeToString(item)
+    asciiJson(Json.encodeToString(item))
 // << mniwa
 
 /*

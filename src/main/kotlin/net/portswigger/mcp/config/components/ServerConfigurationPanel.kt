@@ -45,6 +45,9 @@ class ServerConfigurationPanel(
 
     private fun buildPanel() {
         add(Design.createSectionLabel("Server Configuration"))
+        add(JLabel(when { config.diagnosticManaged && config.diagnosticQuick -> "-re -q：Quick。診断依頼を対象・認証・前後処理の通信の承認として実行します。"
+            config.diagnosticManaged -> "-re：確認モード。診断ジョブの準備・実行を画面で承認します。"
+            else -> "-re：互換モード（起動時に明示指定）" }))
         add(createVerticalStrut(Design.Spacing.MD))
 
         val enabledPanel = createEnabledPanel()
