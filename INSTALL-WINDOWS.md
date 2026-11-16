@@ -32,7 +32,7 @@ New-Item -ItemType Directory -Path (Join-Path $setupRoot 'temp') | Out-Null
 1. Burp Professionalで、このPCの新しい診断用Projectを開きます。既設Projectの置換はしません。
 2. Extensions → Add → Javaで`mcp-server/build/libs/burp-mcp-all.jar`をロードします。表示名は`Burp MCP Server -re`です。MCPが`runtime/settings.json`と保護された`operator-secrets.json`をローカル生成します。
 3. BurpのPython環境へJython standalone JARを指定し、Extensions → Add → Pythonで`burp-cph/CustomParamHandler_marged_api_v0.2.py`をロードします。表示名は`Custom Parameter Handler -re v0.3`です。
-4. MCPタブで実効モードREVIEW、接続先`127.0.0.1:9876`を確認します。設定編集・履歴・Logger参照の許可は人間が設定します。環境変数による旧管理設定が残っている場合は、実効保存先・モードを確認してから進めます。
+4. MCPタブで実効モードREVIEW、接続先`127.0.0.1:9876`を確認します。検証用Projectで設定の変更を許可する場合は、人間が「Enable tools that can edit your config」を有効にしてから初回検証に進みます。無効のまま準備するとCONFIG_EDITING_DISABLEDで停止します。履歴・Loggerの参照要求も人間が確認します。環境変数による旧管理設定が残っている場合は、実効保存先・モードを確認してから進めます。
 5. 診断用プロジェクト直下で次を実行します。既存の同名接続がある場合は重複登録せず設定を確認してください。
 
 ```powershell
