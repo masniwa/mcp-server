@@ -47,7 +47,7 @@ Claude Codeの最初の画面でプロジェクトとMCP接続を確認し、`/m
 
 ## 空の能力一覧から検証・登録する
 
-初期状態の`verifiedCapabilities`は空が正常です。名前を手動追加して`UNSUPPORTED_CAPABILITY`を回避しません。Dashboardで他のScan・補助通信がなく、同じ設定やresource poolを他Taskが使用していないことを人間が確認します。
+Dashboard上部に「Task execution is paused」が表示されている場合は、対象Projectの他のTaskも確認してからタスク実行を再開します。全体停止中はAudit IDが発行されても通信は待機します。初期状態の`verifiedCapabilities`は空が正常です。名前を手動追加して`UNSUPPORTED_CAPABILITY`を回避しません。Dashboardで他のScan・補助通信がなく、同じ設定やresource poolを他Taskが使用していないことを人間が確認します。
 
 Claude Codeへ次を依頼します。
 
