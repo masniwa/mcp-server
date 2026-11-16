@@ -88,3 +88,7 @@ runtimeや資格情報の手動編集、承認の自動操作、途中の拡張�
 5. native終了・保存結果・全evidenceページ・正常再送・設定復元・排他所有者解放を確認する。脆弱性の判断と業務データの後処理は別に完了させる。
 
 結果には、2つの配布コミット、JAR hash、通常／動的のexecutionId・operationId・Audit ID・validationDigest・登録記録・復元結果・未確認事項を記録します。実機Burpを使わないテストのauditIdは模擬値であり、実Scan成立の証拠として報告しません。
+
+## Claude DesktopのChatで検証する場合
+
+Burpへ接続済みのChatでは、「空の能力一覧から検証・登録する」の依頼文を使用できます。Claude Codeのプロジェクト文書の自動読込は前提にできないため、新しいチャットには配布された診断用AGENTS.mdとspec.mdを添付してください。Chat側のツール使用許可の後、検証用Burpで同じexecutionIdのREVIEWを確認します。進捗を再照会する際は、action=operationに元のexecutionIdとoperationIdの両方を渡します。ChatとClaude Codeのどちらで検証したかを結果に記録してください。

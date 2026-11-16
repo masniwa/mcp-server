@@ -1,4 +1,4 @@
-# Burp MCP Server -re 1.4.16
+# Burp MCP Server -re 1.4.17
 
 新しいWindows PCからの導入は [INSTALL-WINDOWS.md](INSTALL-WINDOWS.md) を使用してください。GitHubからの取得、Claude Code接続、空の能力一覧からの人間承認付き通常／動的検証、証拠付き登録、設定復元までを説明しています。診断用の独立した4文書は[diagnosis/read.me](diagnosis/read.me)に同梱しています。
 

@@ -181,7 +181,8 @@ class DiagnosticJobService(private val worker:GuardedWorker,private val store:Jo
                     "retire" -> encode(worker.retire(input.executionId,input.evidenceRef ?: throw JobRejected("RETIREMENT_EVIDENCE_REFERENCE_REQUIRED")))
                     else -> encode(worker.renewContinuation(input.executionId))
                 }.let { body -> JsonObject(start+mapOf("state" to JsonPrimitive("SUCCEEDED"),"result" to body,"nextAction" to JsonPrimitive(next(record(input.executionId),null)))) }
-            } catch(e:Exception) {
+            } catch(e:Throwable) {
+                if(e !is Exception && e !is LinkageError) throw e
                 val failed=JsonObject(start+mapOf("state" to JsonPrimitive("FAILED"),"errorCode" to JsonPrimitive((e as? JobRejected)?.code ?: e.javaClass.simpleName)))
                 JsonObject(failed+("nextAction" to JsonPrimitive(next(record(input.executionId),failed))))
             }
