@@ -24,6 +24,8 @@ interface BurpExecutionPort {
     fun retirementReadiness(auditId:String):Boolean = false
 }
 fun interface HumanApprover {
+    /** Local installation checks are separate from job authorization; fail closed by default. */
+    fun reviewInstallation(message:String):String? = null
     /** Only a trusted UI implementation may approve; never take an approved flag from job JSON. */
     fun review(plan: CompiledPlan, stage: ApprovalStage, report: ValidationReport?): String?
     fun reviewRecovery(plan:CompiledPlan,record:ExecutionRecord,evidenceRef:String):String? = review(plan,ApprovalStage.RECOVERY,null)
@@ -176,6 +178,30 @@ class GuardedWorker(private val port: BurpExecutionPort, private val store: JobS
             write(next)
         }
         return next
+    }
+    /** Exercise the production ownership guard on this installation without publishing a temporary owner. */
+    @Synchronized fun verifyExclusiveContext(): JsonObject = store.transaction {
+        requireJob(store.get("active")?.jsonPrimitive?.contentOrNull == null, "BURP_CONTEXT_BUSY")
+        val probe = "setup-" + UUID.randomUUID()
+        acquire(probe)
+        val refusal = try {
+            acquire(probe + "-contender")
+            null
+        } catch (error: JobRejected) {
+            error.code
+        }
+        requireJob(refusal == "BURP_CONTEXT_BUSY" && store.get("active") == JsonPrimitive(probe),
+            "EXCLUSIVE_CONTEXT_VERIFICATION_FAILED")
+        store.put("active", JsonNull)
+        val evidence = buildJsonObject {
+            put("capability", "EXCLUSIVE_CONTEXT")
+            put("workerEpoch", epoch)
+            put("verifiedAt", now())
+            put("competingAcquire", refusal)
+            put("ownerReleased", true)
+        }
+        store.put("setup-evidence:EXCLUSIVE_CONTEXT", evidence)
+        evidence
     }
     private fun acquire(id: String) {
         val active=store.get("active")?.jsonPrimitive?.contentOrNull

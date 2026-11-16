@@ -1,10 +1,12 @@
-# Burp MCP Server -re 1.4.15
+# Burp MCP Server -re 1.4.16
+
+新しいWindows PCからの導入は [INSTALL-WINDOWS.md](INSTALL-WINDOWS.md) を使用してください。GitHubからの取得、Claude Code接続、空の能力一覧からの人間承認付き通常／動的検証、証拠付き登録、設定復元までを説明しています。診断用の独立した4文書は[diagnosis/read.me](diagnosis/read.me)に同梱しています。
 
 Burp SuiteとAIクライアントをMCPで接続し、診断用Macro・Session Handling Rule・CPHの設定、検証、ActiveScan、証拠保存、設定回復を管理する拡張です。通常運用は人間承認付きの **REVIEW** モードです。
 
 ## 配布物
 
-検証済みの拡張JARを [build/libs/burp-mcp-all.jar](build/libs/burp-mcp-all.jar) に含めています。Java 21を使用してください。対応する [CPH v0.3](https://github.com/masniwa/burp-cph) と組み合わせて管理APIを利用します。
+ビルド済みの拡張JARを [build/libs/burp-mcp-all.jar](build/libs/burp-mcp-all.jar) に含めています。Java 21を使用してください。対応する [CPH v0.3](https://github.com/masniwa/burp-cph) と組み合わせて管理APIを利用します。自動テストと実機検証の区別は[testing.md](testing.md)を参照してください。
 
 ```text
 installation/
@@ -28,7 +30,7 @@ CPHのファイル名は配置互換性のためv0.2のままですが、ロー�
 4. MCPタブの実効モードがREVIEWであることを確認します。必要な設定編集・履歴・Logger参照の許可はオペレーターが操作します。
 5. AIクライアントの接続先は既定で `http://127.0.0.1:9876` です。CPHの設定APIは `127.0.0.1:17866` です。外部ホストへの公開を前提にしません。
 
-実機確認済みの能力はオペレーターの設定であり、初期値は空です。`runtime/settings.json` の `verifiedCapabilities` は、その環境で実際に確認した能力だけを登録してください。過去の診断用runtimeや資格情報をコピーして準備完了と扱わないでください。
+実機確認済みの能力の初期値は空です。公開diagnostic_jobのverify_scanner_workflow／verify_dynamic_workflowは、固定のloopback対象だけを検証し、人間の画面承認と保存証拠に基づいて能力を登録します。通常計画の能力チェックを省略しません。過去の診断用runtimeや資格情報をコピーしたり、能力名の手動追加で受付拒否を回避したりしないでください。ローカルfixtureの成功と、実対象の認証・Macro・業務状態の成功は別です。
 
 詳細は [LOAD.md](LOAD.md)、実行サービスは [diagnosis-runner/README.md](diagnosis-runner/README.md) を参照してください。各Toolの入力条件・手順・確認方法は公開Tool Descriptionにあります。
 

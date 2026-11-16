@@ -34,6 +34,8 @@ import java.nio.file.Path
 import java.util.UUID
 import java.nio.file.Files
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import io.ktor.utils.io.readRemaining
 import kotlinx.io.readByteArray
 
@@ -86,7 +88,18 @@ class KtorServerManager(private val api: MontoyaApi, private val managed:Managed
                         owner={ api.userInterface().swingUtils().suiteFrame() },phase={ diagnosticJobs?.approvalPhase(it) }),managed.quick)
                     val worker=GuardedWorker(port,store,approver)
                     workerProtocol=WorkerProtocol(worker)
-                    diagnosticJobs=DiagnosticJobService(worker,store,managed.quick)
+                    val installation=managed.profileFile?.takeIf { !managed.quick }?.let { profile ->
+                        InstallationVerification(port,store,approver,profile,{ name,request,sourcePort,response,trigger ->
+                            val input=net.portswigger.mcp.tools.GenerateCphImportConfig(tabName=name,
+                                modifyScopeExpression=trigger,matchExpression="{{setup_token}}",replacementExpression="\\g<token>",
+                                issuerHost="127.0.0.1",issuerPort=sourcePort,singleRequest=request,singleResponse=response,
+                                singleExtractExpression="(?P<token>[a-f0-9-]{36})",includeOptions=true)
+                            val text=dispatch.workerCall("generate_cph_import_config",jobJson.encodeToJsonElement(input).jsonObject)
+                                .joinToString("\n") { (it as io.modelcontextprotocol.kotlin.sdk.types.TextContent).text }
+                            jobJson.parseToJsonElement(text).jsonObject
+                        })
+                    }
+                    diagnosticJobs=DiagnosticJobService(worker,store,managed.quick,managed.profileFile,installation)
                 }
 
                 server = embeddedServer(Netty, port = config.port, host = config.host) {

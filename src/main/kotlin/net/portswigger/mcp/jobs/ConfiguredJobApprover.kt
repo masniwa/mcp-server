@@ -5,6 +5,7 @@ import net.portswigger.diagnosis.runner.HumanApprover
 
 /** Authority comes from the selected installation, never approved=true in AI JSON. */
 class ConfiguredJobApprover(private val delegate:HumanApprover,private val quick:Boolean):HumanApprover {
+    override fun reviewInstallation(message:String) = if(quick) null else delegate.reviewInstallation(message)
     private fun actor()="Quick:${System.getProperty("user.name")}"
     override fun review(plan:CompiledPlan,stage:ApprovalStage,report:ValidationReport?) =
         if(quick) actor() else delegate.review(plan,stage,report)

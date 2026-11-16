@@ -21,7 +21,8 @@ import java.util.concurrent.Executors
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val nextTargetsJson:String?=null)
 
 /** One independent executor owns the workflow after approval; MCP calls never wait for a dialog. */
-class DiagnosticJobService(private val worker:GuardedWorker,private val store:JobStore,val quick:Boolean):AutoCloseable {
+class DiagnosticJobService(private val worker:GuardedWorker,private val store:JobStore,val quick:Boolean, private val profileFile:java.nio.file.Path?=null,
+    private val installation:InstallationVerification?=null):AutoCloseable {
     val drafts = JobDrafts(worker, store)
     val lookAhead = LookAheadPlanner(worker, store, drafts)
     private val executor=Executors.newCachedThreadPool { r -> Thread(r,"burp-diagnostic-job").apply { isDaemon=true } }
@@ -43,7 +44,10 @@ class DiagnosticJobService(private val worker:GuardedWorker,private val store:Jo
     private fun record(id:String)=runCatching { worker.record(id) }.getOrNull()
     private fun operation(id:String)=store.get("mcp-operation:$id")?.jsonObject ?: throw JobRejected("OPERATION_NOT_FOUND")
     private fun planning(body:JsonObject,id:String):JsonObject {
-        val report=lookAhead.report(id)
+        val original=lookAhead.report(id)
+        val report=if(installation?.owns(id)==true) JsonObject(original+mapOf(
+            "epochMatches" to JsonPrimitive(record(id)?.epoch==installation.epoch),
+            "installationVerification" to JsonPrimitive(true))) else original
         return JsonObject(body+buildJsonObject {
             put("lookAheadPlanning",report)
             report["agentNextAction"]?.let { put("agentNextAction",it) }
@@ -70,7 +74,10 @@ class DiagnosticJobService(private val worker:GuardedWorker,private val store:Jo
         requireJob(r!=null || op!=null,"NOT_FOUND")
         return planning(buildJsonObject {
             put("mode",if(quick) "QUICK" else "REVIEW");put("execution",r?.let(::encode) ?: JsonNull)
-            put("context",worker.contextStatus())
+            val context=worker.contextStatus()
+            val owner=context["ownerExecutionId"]?.jsonPrimitive?.contentOrNull
+            put("context",if(owner!=null && installation?.owns(owner)==true)
+                JsonObject(context+("ownerEpochChanged" to JsonPrimitive(record(owner)?.epoch!=installation.epoch))) else context)
             store.get("draft-origin:$id")?.let { put("draftOrigin",it) }
             op?.let { put("operation",it) };put("nextAction",next(r,op))
             if(r?.auditId!=null) {
@@ -81,7 +88,7 @@ class DiagnosticJobService(private val worker:GuardedWorker,private val store:Jo
         },id)
     }
     @Synchronized private fun submit(input:DiagnosticJob):JsonObject {
-        requireJob(input.action in setOf("propose","prepare","execute","advance","capture","recover","renew_continuation","retire"),"UNSUPPORTED_JOB_ACTION")
+        requireJob(input.action in setOf("propose","prepare","execute","advance","capture","recover","renew_continuation","retire","verify_exclusive_context","verify_scanner_workflow","verify_dynamic_workflow"),"UNSUPPORTED_JOB_ACTION")
         requireJob(input.action!="retire" || !quick,"HUMAN_MAINTENANCE_REVIEW_REQUIRED")
         val identity=fingerprint(jobJson.encodeToJsonElement(input.copy(operationId=null,index=0,offset=0,count=20)))
         val id=input.operationId ?: UUID.randomUUID().toString()
@@ -102,6 +109,21 @@ class DiagnosticJobService(private val worker:GuardedWorker,private val store:Jo
             executingOperation.set(id)
             val result=try {
                 when(input.action) {
+                    "verify_scanner_workflow","verify_dynamic_workflow" ->
+                        (installation ?: throw JobRejected("INSTALLATION_PROFILE_UNAVAILABLE")).run(input.executionId,input.action=="verify_dynamic_workflow")
+                    "verify_exclusive_context" -> {
+                        requireJob(record(input.executionId) == null, "EXECUTION_ID_REUSED")
+                        val profile = InstallationProfile(profileFile ?: throw JobRejected("INSTALLATION_PROFILE_UNAVAILABLE"))
+                        val approved = java.util.concurrent.atomic.AtomicBoolean(false)
+                        javax.swing.SwingUtilities.invokeAndWait {
+                            approved.set(javax.swing.JOptionPane.showConfirmDialog(null,
+                                "Test the exclusive ownership guard on this installation and register EXCLUSIVE_CONTEXT if verified?",
+                                "Installation verification", javax.swing.JOptionPane.YES_NO_OPTION)
+                                == javax.swing.JOptionPane.YES_OPTION)
+                        }
+                        requireJob(approved.get(), "HUMAN_DENIED")
+                        profile.register(worker.verifyExclusiveContext())
+                    }
                     "propose" -> {
                         val candidate=if(input.draftId!=null) drafts.load(input.draftId,input.draftDigest!!).plan.proposal
                             else jobJson.decodeFromString<JobProposal>(input.proposalJson ?: throw JobRejected("PROPOSAL_REQUIRED"))
@@ -152,7 +174,10 @@ class DiagnosticJobService(private val worker:GuardedWorker,private val store:Jo
                     }
                     "advance" -> encode(worker.poll(input.executionId))
                     "capture" -> { worker.capturePartialResults(input.executionId);buildJsonObject { put("saved",true);put("diagnosisCompleted",false) } }
-                    "recover" -> encode(worker.recover(input.executionId,input.evidenceRef ?: throw JobRejected("RECOVERY_EVIDENCE_REFERENCE_REQUIRED")))
+                    "recover" -> {
+                        val ref=input.evidenceRef ?: throw JobRejected("RECOVERY_EVIDENCE_REFERENCE_REQUIRED")
+                        encode(if(installation?.owns(input.executionId)==true) installation.recover(input.executionId,ref) else worker.recover(input.executionId,ref))
+                    }
                     "retire" -> encode(worker.retire(input.executionId,input.evidenceRef ?: throw JobRejected("RETIREMENT_EVIDENCE_REFERENCE_REQUIRED")))
                     else -> encode(worker.renewContinuation(input.executionId))
                 }.let { body -> JsonObject(start+mapOf("state" to JsonPrimitive("SUCCEEDED"),"result" to body,"nextAction" to JsonPrimitive(next(record(input.executionId),null)))) }
@@ -193,6 +218,12 @@ class DiagnosticJobService(private val worker:GuardedWorker,private val store:Jo
             "DRAFT_PROMOTION_ARGUMENTS_REQUIRED")
         requireJob(input.nextTargetsJson==null || input.action=="plan_next","LOOKAHEAD_DECLARATION_ARGUMENTS_NOT_ALLOWED")
         return when(input.action) {
+            "verify_exclusive_context","verify_scanner_workflow","verify_dynamic_workflow" -> {
+                requireJob(!quick, "REVIEW_REQUIRED")
+                requireJob(input.executionId.length<=80 && input.proposalJson == null && input.evidenceRef == null && input.validationDigest == null,
+                    "UNEXPECTED_SETUP_ARGUMENT")
+                submit(input)
+            }
             "plan_next" -> {
                 requireJob(input.proposalJson==null && input.validationDigest==null && input.evidenceRef==null,
                     "LOOKAHEAD_DECLARATION_ARGUMENTS_NOT_ALLOWED")
@@ -243,7 +274,7 @@ class DiagnosticJobService(private val worker:GuardedWorker,private val store:Jo
 fun Server.registerDiagnosticJobTool(service:DiagnosticJobService) {
     registerWorkflowEvidenceReview(service)
     registerDiagnosticDraftTool(service.drafts,service.lookAhead)
-    mcpTool<DiagnosticJob>(LOOK_AHEAD_GUIDANCE + DRAFT_PROMOTION_GUIDANCE + """Manage a validated diagnostic job through MCP. This is the managed configuration/import/send/scan/recovery path; do not use UI settings imports or direct legacy mutation tools. executionId is a unique 1..100 letter/digit/underscore/hyphen execution identifier, distinct from proposal jobId. In direct propose without draftId/draftDigest, proposalJson is the complete structured JobProposal JSON string, preserving full observed HTTP material, native Macro/Rule/CPH settings and integer references. Obtain observations with get_proxy_http_request_by_id; includeParameters=true returns exact native names/types/offsets and includeBinary=true preserves upload bytes. Preserve dynamic configuration, authentication, diagnostic payloads, stored-effect variants and owned cleanup. action=plan_next is immediate planning-only metadata registration using nextTargetsJson, not an asynchronous native operation and not a target send. Status/operation agentNextAction identifies configuration work to perform alongside current monitoring; lookAheadPlanning is not a replacement for native progress or approval status.
+    mcpTool<DiagnosticJob>(LOOK_AHEAD_GUIDANCE + DRAFT_PROMOTION_GUIDANCE + """Manage a validated diagnostic job through MCP. Fresh REVIEW installations start with no verified capabilities. Bootstrap with action=verify_scanner_workflow (ordinary Scanner) or verify_dynamic_workflow (single-extraction CPH and Scanner), a fresh executionId of 1..80 letters/digits/underscore/hyphen and a stable operationId. No proposalJson, evidenceRef, validationDigest, draft or nextTargetsJson is accepted for these actions. Both return an asynchronous operationId; poll operation with the same executionId/operationId. The server generates its own isolated 127.0.0.1 fixture on an ephemeral port and fixed single-target plan, observes the source, then requests human PREPARATION and EXECUTION approvals, runs five probes, starts one native Audit, collects saved evidence, sends the normal control and restores settings. The empty next-target declaration is internal to this fixed plan. The human must first check no unrelated tasks use this Project. Ordinary capability checks remain unchanged; bootstrap authority cannot be used with caller-supplied plans or targets. Dynamic verification checks fresh one-time tokens in actual SCANNER traffic and their source responses; it verifies this fixture, not arbitrary site authentication, Macro, cached extraction or business cleanup. Registration requires a final human decision and records local evidence; a dynamic pass also registers SCANNER_WORKFLOW and EXCLUSIVE_CONTEXT. result.auditId is retained even after the execution record clears its live handle. Results and evidence remain readable through results/evidence. Denial, missing SCANNER evidence, timeout, uncertain submission or failed restoration never registers the unverified capability. Use recover with evidenceRef after confirming native/helper termination for an incomplete fixed-plan execution. Never replay a timed-out setup with a new ID; inspect the saved operation and execution first. Do not reload MCP or CPH during verification. After all setup executions finish and restoration is verified, perform a separate operator maintenance reload of MCP only to load the registered capabilities, keeping CPH and Project unchanged. action=verify_exclusive_context is a no-traffic ownership-guard check and registers only EXCLUSIVE_CONTEXT after human approval; it does not prove Scanner capability. This is the managed configuration/import/send/scan/recovery path; do not use UI settings imports or direct legacy mutation tools. executionId is a unique 1..100 letter/digit/underscore/hyphen execution identifier, distinct from proposal jobId. In direct propose without draftId/draftDigest, proposalJson is the complete structured JobProposal JSON string, preserving full observed HTTP material, native Macro/Rule/CPH settings and integer references. Obtain observations with get_proxy_http_request_by_id; includeParameters=true returns exact native names/types/offsets and includeBinary=true preserves upload bytes. Preserve dynamic configuration, authentication, diagnostic payloads, stored-effect variants and owned cleanup. action=plan_next is immediate planning-only metadata registration using nextTargetsJson, not an asynchronous native operation and not a target send. Status/operation agentNextAction identifies configuration work to perform alongside current monitoring; lookAheadPlanning is not a replacement for native progress or approval status.
 ${JOB_PROPOSAL_CONTRACT}Mutating actions propose, prepare, execute, advance, capture, recover and renew_continuation return an operationId immediately. Supply a stable operationId for idempotent retries; never repeat a submission after timeout with a different ID. Poll action=operation with the same executionId/operationId until SUCCEEDED or FAILED, and use status to observe execution/native state. Pending operations survive MCP server stop/start in the same extension; after an extension reload OUTCOME_UNKNOWN requires inspection, never automatic replay. Do not reload MCP or CPH during diagnosis.
 Sequence: propose -> prepare -> inspect ALL validation pages and actual workflow evidence -> execute. For a long workflow, explicitly choose executionApprovalMaxAgeSeconds in the proposal from its expected full duration and show it for human approval; omission retains one hour. This changes neither validationMaxAgeSeconds nor revocation, snapshot, input or digest checks. It cannot extend an existing expired approval without a new human review. Native Task insertion-point strategy and resource-pool assignment are not controlled by this API: verify actual Task settings in Burp before start, and inspect original positions and skip reasons after finish. Pool creation or serialScannerRequests alone does not prove Task assignment or complete coverage. Shared CPH response caches are not request-isolated: set variants[].settings.serialScannerRequests=true for every cached multi-step workflow. The compiled plan temporarily sets the actual default resource pool limit to one for preparation, audit and control, preserves its other fields, and restores the complete original pool after each phase. This is a project-wide pool change: first verify no unrelated active task is using it. Exclusive job ownership alone does not serialize native Scanner requests. Before proposing, read output_project_options; a missing/invalid native pool is rejected rather than invented. Omitting serialScannerRequests keeps the old behavior, so actual enabled concurrency one must already be verified and maintained for cached workflows. Never fabricate a baseline or bypass managed writes. prepare performs operator approval and at least five existing-MCP workflow probes per variant/branch, then restores settings. validation paginates probes using offset/count (1..100); when present, totalPreparationOnce and preparationOnce expose the separate one-time evidence with the same independent offset/count window. Read all entries in both collections; one-time evidence never replaces five repeated probes. validationDigest binds both collections. Verify actual auth, fresh dynamic values, input preservation, selected response, rejection branches and cleanup; response existence is not semantic success. execute requires that exact reviewed validationDigest. It continues after approval, starts each approved variant once, observes the same audit, saves evidence, sends the approved benign control and restores settings; status and Logger tools remain usable during execution. Use the normal REVIEW installation with the user's Burp approval; chat 'ok' alone is insufficient. Preserve scope checks, verification, journals, exclusive ownership and conflict detection.
 status and operation never send target traffic or change settings. results reads committed summaries; evidence uses index=record index and offset/count to read saved Logger entries and selected response. Site-map issues remain project-wide; use get_scanner_issues and do not invent per-audit issue counts. capture snapshots partial results without diagnostic target sends and never means completion. advance may collect, benign-resend and restore, so do not use it as a read-only status poll. status.context reports ownerExecutionId, ownerState and ownerEpochChanged for the persisted exclusive owner; use it to identify BURP_CONTEXT_BUSY rather than guessing from an empty native list.

@@ -32,6 +32,7 @@ internal fun reviewVariantSummary(variant:ScanVariant,requested:List<InputParame
 
 class SwingJobApprover(private val directory:Path,private val owner:()->java.awt.Component?={null},
     private val phase:(String)->Unit={}) : HumanApprover {
+    override fun reviewInstallation(message:String):String? = await(FutureTask { confirm(message,"初回能力検証・登録") },"INSTALLATION")
     private fun confirm(message:String,title:String):String? {
         return if(ReviewApprovalDialog.show(owner(),title,listOf(ApprovalPage("操作内容",message)),
                 "内容と対象を確認し、許可する場合は「操作を許可する」にチェックしてOKを押してください。"))

@@ -1,0 +1,194 @@
+Burp MCP quick setup（Windows・通常-re／REVIEW）
+更新日：2026年11月17日
+
+GitHubの管理配布版を新しいWindowsへ導入する場合は、MCPのINSTALL-WINDOWS.mdを先に使います。
+clone時の配置名はmcp-server／burp-cphです。本書の-reは改修版の名称で、既設の受領配置を指します。
+
+これはread.meの短縮手順です。詳しい導入手順・エラー対応は同じ場所のread.me、
+診断時のルールと成立条件はAGENTS.md・spec.mdを使います。
+初回導入と既存案件の再開を区別してください。
+
+① 診断用フォルダーと配布物を確認
+
+解凍・受領した診断用フォルダーを作業場所にします。直下に次を配置します。
+  AGENTS.md／CLAUDE.md／spec.md／read.me／quicksetup.txt
+  burpdata（Burp Projectの保存先）／temp（作業用ファイル）
+
+通常-reのビルド済みMCPとCPH一式を担当者から受領します。
+  mcp-server\build\libs\burp-mcp-all.jar
+  mcp-server\libs\mcp-proxy-all.jar
+  burp-cph\CustomParamHandler_marged_api_v0.2.py と関連モジュール
+  burp-cph\runtime\cph-connection.json
+
+MCPとCPHは受領した兄弟配置を保ちます。既設の正式インストール先が別にある場合は
+その絶対パスを使用し、診断用フォルダーへソース・秘密情報・台帳を複製しません。
+proxyが未配置ならread.me第5章に従い、同じ配布JAR内のものを取り出します。
+GitHubのmasniwa/mcp-serverとmasniwa/burp-cphは管理配布版です。コミットとJAR hashを確認します。
+ビルド済みJARを使用する導入では、利用者によるビルドは不要です。
+旧PCのruntime・個人用設定・資格情報・診断履歴を新規導入へ流用しません。
+
+② JythonとJavaを用意
+
+Jython Standalone JAR 2.7.4を取得します（Installer JARではありません）。
+  https://www.jython.org/download.html
+診断用フォルダーのruntime\jython-standalone-2.7.4.jar等へ配置します。
+このruntimeと、MCPインストール先の管理用runtimeは別です。
+Burp同梱のjre\bin\java.exeの絶対パスも確認します。
+
+③ Burp Projectを選択
+
+初回：Burp Suite ProfessionalでNew project on diskを選び、
+burpdata\<案件名>.burpへ新規保存し、Burpの既定設定で始めます。
+過去の設定JSONやnothing.burp／nothing.jsonの読込みは必要ありません。
+再開：保存済みの同じ.burpを開き、履歴や設定を初期化しません。
+設定JSONと、履歴を含む.burp Projectを混同しないでください。
+
+④ MCP -reをロード
+
+Extensions → Installed → Add
+  Extension type：Java
+  Extension file：正式配置のmcp-server\build\libs\burp-mcp-all.jar
+Next後にBurp MCP Server -reとMCP -reタブを確認し、Errorsを確認します。
+MCPは1件、CPHも1件だけロードします。
+
+MCP -reは配置先に管理用runtimeを生成します。初回能力は空です。INSTALL-WINDOWS.mdに従い、
+公開diagnostic_jobのverify_scanner_workflow／verify_dynamic_workflowで固定ローカル対象を検証し、
+人間の画面承認と保存証拠に基づいて登録します。全検証終了・復元後のMCPだけの保守reloadで読み込みます。
+入力rootは担当者が確認します。AIに資格情報の取得、能力の自己宣言、管理解除を依頼しません。
+タブの実効モードがREVIEWであることを確認します。異なる場合は担当者へ確認します。
+
+⑤ CPH -reをロード
+
+Settings → Extensions → Python environment
+  Location of Jython standalone JAR file：②のJython JAR
+  Folder for loading modules：正式配置のburp-cphの絶対パス
+Extensions → Installed → Add
+  Extension type：Python
+  Extension file：burp-cph\CustomParamHandler_marged_api_v0.2.py
+Next後にCustom Parameter Handler -re v0.3／CPH Config -reを確認します。配置互換性のためファイル名はCustomParamHandler_marged_api_v0.2.pyのままです。
+API起動出力：http://127.0.0.1:17866
+CPH_API_v0_2.pyを単独のExtensionとして追加しません。
+初回はCPH Optionsで必要なTool scope（Extender・Scanner・Repeater等）を設定します。
+対象別の設定反映は以後diagnostic_job経由です。
+
+⑥ MCPの接続設定
+
+MCP -reタブ
+  Enabled：ON
+  Host：127.0.0.1／Port：9876
+  Enable tools that can edit your config：ON（ジョブ反映用）
+  Require approval for HTTP requests：ON
+  Require approval for project data access：初回はON
+  Filter config credentials：基本はON
+読取り・送信の確認が出たら利用者が対応します。診断ジョブの承認は別に必要です。
+17866はCPH API、8080は通常のBurp Proxyであり、AIのMCP接続先ではありません。
+
+⑦ AIクライアントを接続
+
+Claude Codeでは、この診断用フォルダーをローカルの作業場所として開きます。
+CLIを使う場合はread.me第8章のclaude mcp add（local scope）で登録できます。
+共有するproject scope設定を使う場合は、直下の.mcp.jsonへ次の内容を設定します。
+パスはこのPCの実際の絶対パスへ置き換え、既存の他サーバー設定を保持してください。
+
+```json
+{
+  "mcpServers": {
+    "burp": {
+      "type": "stdio",
+      "command": "C:\\Users\\<ユーザー名>\\AppData\\Local\\Programs\\BurpSuite\\jre\\bin\\java.exe",
+      "args": [
+        "-jar",
+        "C:\\<正式インストール先>\\mcp-server\\libs\\mcp-proxy-all.jar",
+        "--sse-url",
+        "http://127.0.0.1:9876"
+      ]
+    }
+  }
+}
+```
+
+local scopeとproject scopeを重複登録せず、既存登録を先に確認します。
+保存後はクライアント側を再接続し、必要ならアプリを再起動して同じフォルダーを開きます。
+/mcp等で接続と公開Toolを確認し、CLAUDE.mdの@AGENTS.mdから共通ルール、
+同じ場所のspec.mdも最後まで読まれていることを確認します。
+Codexのconfig.toml、Claude DesktopのDeveloper設定はread.me第8章を使います。
+クライアントごとの設定ファイルを取り違えないでください。
+ファイル読書きとBurp UI操作の能力も別に確認し、UIを操作できなければ利用者が担当します。
+
+⑧ 接続チェック
+
+AIへ「Burp接続チェック」を依頼します。
+UTF-8を明示した日本語ジョークのBase64往復と全文一致を確認します。
+続いてget_cph_configとoutput_project_optionsの読取りを依頼します。
+CPHのsuccess:true・managed:true、REVIEW、diagnostic_jobの公開を確認します。
+ここでは診断対象への送信・設定変更・Scan開始を行いません。
+
+失敗時はBurp起動、Enabled、ポート、Java／proxyのパス、承認待ち、Errorsと
+クライアント側のTool一覧を確認します。MCP・CPHのUnload→Loadを接続対策にしません。
+診断中の再ロードは禁止です。保守が必要ならread.me第13章に従います。
+CPHをUnload／Removeした後は、Burp再起動を経てからロードします。
+
+⑨ 必要な補助機能だけを用意
+
+一意な登録値が必要な場合だけ、Extensions → BApp StoreのRequest Randomizerを
+導入し、登録済みアクションと今回の値の形式を確認します（spec.md第4.6章）。
+
+待機・メール取得が必要な場合だけ、担当者から受領したIntegrale_mocks一式を使います。
+CPython 3.11以降を導入し、診断用フォルダーのPowerShellで実行します。
+
+```powershell
+python -m venv .\Integrale_mocks\.venv
+.\Integrale_mocks\.venv\Scripts\python.exe -m pip install -r .\Integrale_mocks\requirements.txt
+```
+
+待機機能のみ：
+```powershell
+.\Integrale_mocks\start.ps1
+```
+
+メール取得も使う場合（通常起動と同時には実行しない）：
+```powershell
+.\Integrale_mocks\start.ps1 -Mail
+```
+
+今回の利用者のGmailアドレス・アプリパスワード・別のローカルAPI用トークン
+（空白なしのASCIIで32文字以上）を案内に従って入力します。
+秘密値は非表示で入力し、チャット・文書・ログへ保存しません。
+APIトークンだけをメールAPIのBearer認証にも設定し、GmailパスワードをHTTPへ渡しません。
+起動したPowerShellは開いたままにし、終了はCtrl+Cで行います。
+認証だけの確認はstart.ps1 -CheckMailAuthで行えます。これはHTTPサービスを起動しません。
+待受は127.0.0.1:185です。管理版での疎通送信はread.me第3.1章の準備用ジョブ経由とし、
+通常の接続チェックへ追加しません。補助サービスをActive Scanの対象にしません。
+
+⑩ 今回の正常通信を記録して準備を依頼
+
+Target Scopeに許可されたprotocol・host・portを設定し、BurpのOpen browserから
+正常ログイン、対象操作、必要な一覧・詳細・削除・Logoutを記録します。
+Proxy HTTP historyの#とHTTP method・機能で対象を指定します。
+Logger UIの番号を同じ数字のProxy IDやMCP idで代用しません。
+
+準備とScan実施を区別し、read.me第11章のプロンプト例を使います。
+診断する入力名・位置も伝え、AIが依頼範囲と各構成の実選択を照合します。
+REVIEWではdiagnostic_jobを使い、利用者が準備と実行を別々にBurp画面で承認します。
+確認欄とOKは利用者が操作し、チャットのokを画面承認へ読み替えません。
+prepareの5回以上の検証と全証拠の意味確認・元設定への復元後に、実施依頼があれば、
+まずplan_nextへ現在のexecutionIdとnextTargetsJsonで依頼順の残対象を宣言します。
+最後の対象もnextTargetsJson="[]"を明示してから、確認したvalidationDigestでexecuteへ進みます。
+Scan中はagentNextActionに従って次の設定作成とsubmit_nextを進めます。
+準備後に設定が元へ戻ることは正常であり、手動で再有効化しません。
+MANAGED_MODE_JOB_REQUIREDをUI Import・直接API・管理解除で迂回しません。
+実施後は結果、正常再送、設定復元、診断データ・セッション回収を別々に確認します。
+
+⑪ デモを使う場合のみ
+
+同じ診断用フォルダーにdemo/demo_server.pyを受領している場合の任意の練習環境です。
+実案件の必須準備ではありません。メール送信を使わない基本起動：
+```powershell
+python .\demo\demo_server.py
+```
+Burpブラウザーでhttp://127.0.0.1:18080を開きます。
+メール送信も練習する場合だけ--smtp-setupを付け、今回の送信アカウントを確認します。
+demoのSMTP送信設定とIntegrale_mocksのメール受信設定を区別してください。
+
+翌日以降は同じ診断用フォルダーと保存済みBurp Projectを開き、必要な補助サービスを
+起動して⑧から再確認します。既存のProject・runtime・tempを一括初期化しません。

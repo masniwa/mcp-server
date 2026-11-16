@@ -12,7 +12,7 @@ JARを `build/libs` からロードすると、このリポジトリ直下がイ
 2. `runtime/settings.json` と `runtime/operator-secrets.json` がローカル生成されます。settingsの初期モードはREVIEW、能力の初期値は空です。
 3. BurpのPython環境へJython standalone JARを設定し、CPH v0.3をロードします。MCPとCPHはそれぞれ1つだけロードします。
 4. MCPタブでREVIEW、公開 `get_cph_config` で `success=true` と `managed=true` を確認します。
-5. 機能を実機確認した後、オペレーターが `verifiedCapabilities` へ確認した能力だけを設定します。代表的な名称は `SCANNER_WORKFLOW`、`EXCLUSIVE_CONTEXT`、必要な場合の `DYNAMIC_WORKFLOW_VERIFIED` です。名称を設定するだけで検証済みにはなりません。
+5. [INSTALL-WINDOWS.md](INSTALL-WINDOWS.md)に従い、公開diagnostic_jobのverify_scanner_workflow、必要な場合のverify_dynamic_workflowで初回能力を検証・登録します。初回確認・準備・実行・登録は人間がBurp画面で承認します。名称を手動追加して受付拒否を回避しません。終了・設定復元・通信停止を確認した後のMCPだけの保守reloadで登録を読み込みます。CPHはreloadしません。
 
 MCPの既定接続先は `http://127.0.0.1:9876`、認証付きCPH APIは `127.0.0.1:17866` です。既存の環境変数による高度な起動設定を残している場合は、インストール先runtimeより優先されることがあるためオペレーターが実効設定を確認してください。
 

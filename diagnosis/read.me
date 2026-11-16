@@ -1,0 +1,664 @@
+新規GitHub導入は、取得したMCPのINSTALL-WINDOWS.mdを最初に読む。本書のmcp-server／burp-cphは管理配布版の配置名であり、表示名とREVIEWは公開ToolとBurp画面で確認する。
+
+# Burp MCP 診断環境のセットアップ手順書
+
+作成日：2026年10月9日
+更新日：2026年11月17日
+対象：Windows PC。Burp Suite Professionalのライセンスがあり、Git・Jython・AIクライアントは未導入の状態。MCP Serverはビルド済みJARを含む配布リポジトリから取得する。
+
+この手順で、カスタムMCP ServerとCPHをBurpへ組み込み、AIから診断準備・テスト送信・Active Scan・結果確認を行える状態にする。BurpのIssueレポート出力までを扱う。操作例のパスは新しいPCに合わせて置き換える。
+
+通常の`mcp-server`（REVIEW、人間承認あり）と`burp-cph`を使う。従来のmcp-server・burp-cphとは別の配布物であり、ロード先と実効モードを確認する。管理モードではAIが構成案・証拠を判断し、Burp実行サービスへMCPのdiagnostic_jobから依頼する。詳細は[診断仕様 第2.2章](spec.md#22-改修版の診断ジョブと実行モード)に従う。
+
+診断時の判断・実行条件は同じフォルダーの[AGENTS.md](AGENTS.md)と[spec.md](spec.md)を正とする。本書は導入と利用開始の手順を担当する。
+
+短い導入手順は同じ場所の[quicksetup.txt](quicksetup.txt)を使う。これは本書の要約であり、診断の成立条件はAGENTS.md・spec.mdで確認する。診断用の共通文書は以下の4ファイル、quicksetup.txtは導入用の補助資料として併せて配布する。
+
+別PCへ持ち出す文書は、本書・AGENTS.md・spec.md・CLAUDE.mdの4ファイルである。開発側では`diagnosis`に保管しているが、配布先では4ファイルを診断専用プロジェクトの直下へ配置する。開発用の同名文書を上書きせず、新しい診断専用フォルダーを用意する。開発用AGENTS.md・spec.md、testing.md、roadmap.md、過去の診断記録は導入に不要である。必要なソフト・配布ファイルは以下の取得先または担当者から別途用意する。文書だけをコピーしても、Burp・MCP Server・CPHの実体は導入されない。
+
+本書は、BurpとAIクライアントを同じWindows PC上で動かす構成を対象とする。WSL・コンテナー・別PCでクライアントを動かす場合は、Windowsのパスや`127.0.0.1`の接続先が同じとは限らないため、本書の設定をそのまま適用しない。
+
+| 利用場所 | 作業と文書の基準 | Burpへロードする実体 |
+| --- | --- | --- |
+| この開発ワークスペースのルート | 開発用AGENTS.md・spec.md・testing.md・roadmap.md・CLAUDE.md | 変更対象のプロジェクトを開発・検証する |
+| 同じワークスペースのdiagnosis | 診断用4ファイルとdiagnosis/temp | 親に既設のmcp-server／burp-cph等の正式配置を参照する。ソースや台帳をdiagnosisへ複製しない |
+| 別PCの独立した診断フォルダー | 配置した診断用4ファイルとその直下のtemp | 担当者から受領したMCP・CPH一式を配置する |
+
+以下の初回導入例は、別PC等に新しく作る`Burp-diagnosis`を使う。同じPCで既設のdiagnosisを開く場合は、新規作成・clone・初期化を実行せず、診断用の絶対パスを`$setupRoot`、実際のMCPインストール先を`$mcpHome`として確認する。文書の基準とMCPのruntimeの基準が別のディレクトリーでもよい。
+
+配布ファイル名は`AGENTS.md`・`CLAUDE.md`・`spec.md`・`read.me`に合わせる。`agent.md`や`spec.me`という別名にはしない。以降のPowerShell操作は診断用プロジェクト直下で行い、`<...>`で示す例の値は今回のPC・対象の実際の値へ置き換える。
+
+初回は次の順で進める。AIクライアントは第8章のうち使用するものを一つ選ぶ。
+
+| 順序 | 作業 | 次へ進む条件 |
+| --- | --- | --- |
+| 1 | 第1～3章（第3.1章を除く）：必要ソフト・配布ファイル・文書を準備 | 選択した版のビルド済みJAR、CPH一式、文書4ファイルがある。tempは空でよい |
+| 2 | 第4～7章：新しいBurp Projectを作成し、MCP・CPHをロード | 保存先が決まり、両拡張の起動エラーがない |
+| 3 | 第8～9章：AIクライアントを設定し、接続・文書読み込みを確認 | Base64、Project設定、CPH設定をそれぞれ読み取れる |
+| 4 | 必要な場合のみ第3.1章：Integrale_mocksを準備・起動 | 待機API、または今回のメール連携で必要な認証・APIを確認できる |
+| 5 | 第10章：今回の対象を正常操作して履歴へ記録 | 対象と、必要な認証・確認・削除等のRequest／Responseが揃う |
+| 6 | 第11章の「診断準備」を依頼 | REVIEWの準備承認後、必要な構成・分岐の検証証拠を確認し、設定復元まで成立する |
+| 7 | 第11章の「Active Scanの開始」を依頼し、第12章で結果を出力 | 必要な診断構成が終了し、結果・正常再送・後処理を確認する |
+
+途中で止まった場合は第13章を参照する。履歴や設定が空であることは初回導入の異常ではない。未完了の段階を飛ばして診断開始へ進まない。
+
+## 1 必要なもの
+
+| 項目 | 用途・用意するもの |
+| --- | --- |
+| Burp Suite Professional | インストールとライセンス認証を済ませる。既に使える場合は再インストール不要 |
+| Git for Windows | 指定リポジトリをcloneする場合に使用。配布一式を受領済みなら、ファイル取得のためのGitは不要 |
+| Java実行環境 | Burp同梱のJavaをMCP proxyの起動にも使用。利用者によるビルドや追加JDKの導入は不要 |
+| Jython standalone 2.7.4 | Burp上でCPHを実行するためのJAR |
+| MCP対応AIクライアント | Codex、Claude CodeまたはClaude Desktop。クライアントのインストールと利用可能なアカウントを用意 |
+| インターネット接続 | Git取得、補助ソフトの取得、AI利用 |
+| 診断対象への接続 | 対象アプリ、必要なVPN・テストアカウント等を別途用意 |
+
+BurpライセンスはAIクライアントの利用契約を含まない。ここではAIクライアントをMCP接続で使うため、Burp AIの利用は必須ではない。対象アプリケーションは、以下の2リポジトリに含まれるものとして扱わない。
+
+診断用AIには、MCP操作に加え、このPCの作業用`temp`へ設定スナップショット・通信記録を保存し、必要な記録を読み戻す能力と権限が必要である。MCPへの接続だけでは、ローカルファイルの読み書きやBurp UI操作まで使えるとは限らない。Claude Desktop等で不足する場合は、許可されたファイル操作機能を別途用意するか、ローカルファイルを扱えるCodex・Claude Code環境を使用する。Burp UI操作をAIへ任せられない場合は、利用者が必要なUI操作を担当する。能力が不足したまま、自動化の準備完了とはしない。
+
+指定の取得先：
+
+- [masniwa/mcp-server](https://github.com/masniwa/mcp-server)
+- [masniwa/burp-cph](https://github.com/masniwa/burp-cph)
+
+masniwa/mcp-serverとmasniwa/burp-cphは管理版-reの配布先である。新規環境ではMCP配布物のINSTALL-WINDOWS.mdに従い、両方のコミットとJAR hashを記録する。runtime・資格情報はPCごとに生成し、公開Toolと実効REVIEWを確認する。従来版や未指定の開発中ビルドで代替しない。
+
+対象の機能によっては、次の補助機能も必要になる。通常の導入で一律に用意する必要はない。
+
+| 補助機能 | 必要になる条件・準備 |
+| --- | --- |
+| Request Randomizer Extension | 同じ値の再利用で登録が失敗する場合。BurpのExtensions → BApp Storeで[Request Randomizer](https://portswigger.net/bappstore/36d6d7e35dac489b976c2f120ce34ae2)を探してInstallし、Installedでロードとエラーの有無を確認する。Ruleから登録済みのRandomizerアクションを呼べることを確認する。メールのランダム化には、利用を許可した元アドレスも用意する。詳細は[診断仕様 第4.6章](spec.md#46-登録の一意性とrequest-randomizer)を参照 |
+| HTTP待機用の補助サービス | 登録・更新の保存結果への反映に遅延がある場合。標準URLは`http://127.0.0.1:185/api/v1/sleep?ms=<待機ミリ秒数>`。利用を許可した接続先と単位を確認し、サービスを起動する。Scan時間が非常に長くなる可能性を使用前に説明する。測定とMacroへの配置は[診断仕様 第4.7章](spec.md#47-非同期登録遅延反映とhttp待機)を参照 |
+| メール取得用の補助サービス | メールのコード・リンクによる再認証が必要な場合。今回使用するGmailアドレス、アプリパスワード、別途生成したローカルAPI用トークンを用意する。起動方法は第3.1章、診断構成は[診断仕様 第4.9章](spec.md#49-メールによる再認証)を参照 |
+
+## 2 Burpと補助ソフトを用意する
+
+### Burp Suite Professional
+
+ライセンスだけを持っていてBurp本体が未導入の場合は、[PortSwiggerのダウンロード案内](https://portswigger.net/burp/documentation/desktop/getting-started/download-and-install)からWindows版を導入し、起動時にProfessionalライセンスを認証する。
+
+WindowsのネイティブインストーラーにはJava実行環境が含まれる。このJavaをMCP proxyの起動にも使用する。[公式の起動説明](https://portswigger.net/burp/documentation/desktop/troubleshooting/launch-from-command-line)
+
+既存環境ではBurp 2026.9.1とJython 2.7.4で稼働を確認している。異なるBurp版では、後述のロード・接続・実通信確認を実施する。
+
+### GitとJavaの確認
+
+1. [Git for Windows](https://git-scm.com/install/windows)を導入する。
+2. PowerShellを開き直し、次を実行する。
+
+```powershell
+git --version
+```
+
+3. Burpのインストール先を確認し、その配下の `jre\bin\java.exe` を探す。インストール先は利用者ごとに異なる。
+4. 次の例のパスを実際の場所に置き換え、Javaが起動することを確認する。
+
+```powershell
+$burpJava = 'C:\Users\<ユーザー名>\AppData\Local\Programs\BurpSuite\jre\bin\java.exe'
+Test-Path -LiteralPath $burpJava
+& $burpJava --version
+```
+
+Test-PathがTrueで、Javaのバージョンが表示されればよい。この絶対パスを第8章のCodex／Claude設定で使用する。PATHへJavaを追加する必要はない。
+
+### Jython
+
+[Jython公式ダウンロード](https://www.jython.org/download.html)から **Jython Standalone JAR 2.7.4** を取得する。Installer JARやPython 3では代替できない。CPHのためにCPythonやpipを導入する必要はない。
+
+## 3 フォルダーと配布ファイルを用意する
+
+初回の独立導入では、デスクトップの`Burp-diagnosis`を診断専用プロジェクトにする。開発用のBurp+mcp+AIを保存先にしない。既設環境の再開ではこの作成手順を繰り返さず、現在の診断フォルダー・Project・配布物を確認する。
+
+最小構成一式を既に受領している場合は、そのフォルダーを作業場所に選ぶ。新規GitHub導入ではMCPのINSTALL-WINDOWS.mdに従い、mcp-serverとburp-cphを兄弟フォルダーとしてcloneし、同梱diagnosisから診断用文書4ファイルを配置する。既設の通常-re配布を受領した場合は、指定された配置名を維持する。Integrale_mocksは補助機能が必要な場合に第4章に従って別途用意する。受領済みフォルダーへ別の版を重ねて配置しない。
+
+```powershell
+$setupRoot = Join-Path $env:USERPROFILE 'Desktop\Burp-diagnosis'
+New-Item -ItemType Directory -Path $setupRoot -Force
+Set-Location -LiteralPath $setupRoot
+New-Item -ItemType Directory -Path (Join-Path $setupRoot 'runtime') -Force
+New-Item -ItemType Directory -Path (Join-Path $setupRoot 'burpdata') -Force
+New-Item -ItemType Directory -Path (Join-Path $setupRoot 'temp') -Force
+```
+
+管理配布版をGitHubから新規取得する場合は、同じ作業場所で次を実行する。同名フォルダーが既にある場合は、そこへ再cloneしない。取得先が非公開の場合は、そのリポジトリへのアクセス権を持つGitHubアカウントで認証する。
+
+```powershell
+git clone https://github.com/masniwa/mcp-server.git
+git clone https://github.com/masniwa/burp-cph.git
+```
+
+CPHはリポジトリ一式を取得し、本体だけを抜き出してコピーしない。MCPのJARとCPHには、担当者が今回の診断用として指定した配布版を使う。GitHubから取得できたことだけで、この手順書に対応する最新版・検証済み版が揃ったとは判断しない。配布版が不明な場合は担当者へ確認し、第5・9章の実ファイル・Tool・接続確認を行う。
+
+取得したJython JARを `runtime\jython-standalone-2.7.4.jar` へ置く。本書と診断用のAGENTS.md・spec.md・CLAUDE.mdを`$setupRoot`の直下へコピーする。開発側から受け取る場合は`diagnosis`内の4ファイルを取り出し、配布先に`diagnosis`という階層を作らない。診断用文書が配布物に含まれない場合は、プロジェクト担当者から受領する。既存の同名ファイルがある場合は用途を確認し、開発用文書を上書きしない。
+
+共通ルールの入口はAGENTS.mdとし、spec.mdを全文読む指示を同書へ集約している。Claude Code用のCLAUDE.mdは、同じ場所のAGENTS.mdを`@AGENTS.md`で読み込む。親ディレクトリーの入口ファイルは不要である。
+
+初回配布時は、選択した版のMCP・CPH一式、必要な場合の`Integrale_mocks`、診断用文書4ファイル、空の`temp`から開始できる。以下は通常-reの導入後の構成例である。全体の`runtime`はJythonの配置先で、MCPインストール先の`runtime`は管理用の保存先とする。旧PCの`.venv`、個人用MCP設定、資格情報、worker台帳、ログ、設定スナップショット、診断結果、初期化用の`nothing.burp`・`nothing.json`は新規配布へ混在させない。既存案件の再開・移設では、それらを勝手に削除せず担当者の移行手順に従う。診断用Projectは第4章で新規作成し、対象の通信は第10章で今回の正常操作から記録する。
+
+```text
+Burp-diagnosis
+├─ mcp-server
+│  ├─ build\libs\burp-mcp-all.jar   配布済みの管理MCP
+│  ├─ libs\mcp-proxy-all.jar        同梱JARから取り出すstdioクライアント
+│  └─ runtime                      ローカル管理設定・正式入力・実行台帳
+├─ burp-cph
+│  ├─ CustomParamHandler_marged_api_v0.2.py
+│  └─ CPH_API_v0_2.py
+│     （関連モジュールとruntimeの接続設定も一式で配置）
+├─ Integrale_mocks
+│  ├─ Integrale_mocks_v1.2.0.py     待機・メール取得の補助サービス
+│  ├─ start.ps1                    起動スクリプト
+│  ├─ requirements.txt             Python依存パッケージ
+│  ├─ README-mail.md               APIの利用手順
+│  └─ Integrale_mocks_v1.2.0.json   任意のAPIリクエスト集
+├─ runtime\jython-standalone-2.7.4.jar
+├─ read.me
+├─ quicksetup.txt                  導入手順の要約
+├─ AGENTS.md                       CodexとClaude Code共通の診断ルール
+├─ spec.md                         共通の診断仕様
+├─ CLAUDE.md                       @AGENTS.mdを読み込む入口
+├─ burpdata
+│  └─ <案件名>.burp                 利用者が保存するProject
+└─ temp
+```
+
+利用者のBurp Projectは`burpdata`に保管する。一時スクリプト・引数／応答JSON・通信ログ・検証結果・設定スナップショットなどの作業用ファイルは、診断用プロジェクト直下（上記構成例のBurp-diagnosis直下）のtempに統一する。基準は本書・AGENTS.md・spec.md・CLAUDE.mdを配置したディレクトリーであり、その親ではない。本書の/tempまたはtempはこの保存先を指し、OSのルート直下を指すものではない。現在の作業ディレクトリーにかかわらず、保存先の絶対パスを確認する。既設のProjectを別の場所へ保存済みなら、移動を前提とせずその保存先を保持する。
+
+診断の区切りに不要になった中間ファイル・ログ・スナップショットを整理する。報告や復元に必要な証拠、使用中のProject、ユーザー提供の入力は保持する。`temp`全体を一括削除しない。具体的な整理条件は[診断用AGENTS.md 第11章](AGENTS.md#11-記録と報告)に従う。
+
+管理モードの正式入力・台帳・保存証拠・承認記録は、MCPの`runtime`へ実行サービスが保存する。手元の一時ファイルと区別し、整理やエラー回避のために移動・削除・編集しない。入力root、確認済み能力、資格情報の初期設定は担当者が行う。
+
+### 3.1 Integrale_mocksの導入・起動（待機・メール取得）
+
+`Integrale_mocks`は、上記2リポジトリのcloneだけで揃う前提にしない。必要になった場合は担当者から本体`Integrale_mocks_v1.2.0.py`、`start.ps1`、`requirements.txt`、利用手順`README-mail.md`を受領し、診断用プロジェクトの`$setupRoot\Integrale_mocks`へ配置する。APIリクエスト集`Integrale_mocks_v1.2.0.json`は任意であり、サービスの起動には使用しない。`development`配下の模擬サイトとテストは診断時に不要である。
+
+補助サービスにはCPython 3.11以降とFlaskが必要であり、CPH用のJythonとは別に準備する。[Python公式のWindows向け配布](https://www.python.org/downloads/windows/)からCPythonを導入する。PowerShellを開き直して`python --version`を実行し、3.11以降の実際のPythonが起動することを確認する。コマンドが見つからない場合やStore画面が開く場合は、導入した`python.exe`の絶対パスを確認し、次の`python`を`& 'その絶対パス'`へ置き換える。診断用プロジェクトの`$setupRoot`を作業場所にして次を実行する。
+
+```powershell
+Set-Location -LiteralPath $setupRoot
+python -m venv .\Integrale_mocks\.venv
+.\Integrale_mocks\.venv\Scripts\python.exe -m pip install -r .\Integrale_mocks\requirements.txt
+.\Integrale_mocks\start.ps1
+```
+
+通常起動では`127.0.0.1:185`で待機APIを利用でき、メール機能は無効である。メール取得も必要な場合は通常起動したサービスを終了してから、`start.ps1 -Mail`で起動する。同じポートへ二重起動しない。今回使用するGmailアドレス、アプリパスワード、ローカルAPI用トークンを求められたら入力する。アプリパスワードとAPIトークンは非表示で入力し、ソース・チャット・共有ログへ書かない。APIトークンは空白なしのASCIIで32文字以上とし、Gmailのアプリパスワードとは別の値を使用する。
+
+メール機能付き起動のコマンドは次のとおり。通常起動と同時には実行しない。
+
+```powershell
+.\Integrale_mocks\start.ps1 -Mail
+```
+
+Gmailアドレスは今回確認したメールの受信先を用意するためのもので、補助サービス自身がメールを送る機能ではない。ローカルAPI用トークンは、メールAPIへ送るRequestのBearer認証にも同じ値を設定する。GmailのアプリパスワードをRequestやMacroへ入れない。
+
+Gmailのアプリパスワードは、[Google公式の手順](https://support.google.com/accounts/answer/185833)に従って2段階認証を有効にしたアカウントで作成する。組織の制限等で作成できない場合は、現在の補助サービスの方式でメール連携を開始できない。作成済みの16文字を使い、通常のログインパスワードは入力しない。必要なら`start.ps1 -CheckMailAuth`で読取専用のIMAP認証確認だけを行う。メール機能を使わない場合はGmailの準備は不要である。
+
+```powershell
+.\Integrale_mocks\start.ps1 -CheckMailAuth
+```
+
+この確認は認証結果を表示して終了し、HTTPサービスを起動しない。成功後も、メールAPIを使うときは改めて`-Mail`で起動する。
+
+サービスを起動したPowerShellは開いたままにする。終了はCtrl+Cで行う。PowerShellの実行ポリシーで`start.ps1`が拒否される場合は、組織の設定を勝手に変更せず、作成した仮想環境から本体を直接起動できる。
+
+```powershell
+.\Integrale_mocks\.venv\Scripts\python.exe .\Integrale_mocks\Integrale_mocks_v1.2.0.py --port 185
+```
+
+メール機能も使う場合は、この起動コマンドの末尾へ`--mail`を付ける。サービスを再起動するとメール監視は失われるため、実行中の診断が利用していないことを確認してから再起動する。
+
+待機APIは`/api/v1/sleep?ms=<待機ミリ秒数>`、メール取得APIは`/api/v1/mail/`配下である。メールAPIには起動時と同じAPIトークンのBearer認証が必要となる。`GET /api/v1/mail/health`の成功はサービスの稼働確認であり、IMAP認証や今回のメール取得成功を保証しない。診断への組み込みと実通信確認は診断仕様第4.7・4.9章に従い、補助サービスをActive Scanの対象に含めない。待機APIに応答がない場合は、第13章の手順で起動状態を確認する。
+
+第9章のMCP接続確認後、待機APIを使う場合はAIへ次を依頼する。
+
+```text
+起動したIntegrale_mocksの http://127.0.0.1:185/api/v1/sleep?ms=0 の疎通を確認してください。
+通常-reのREVIEWでは、診断仕様第2.2章に従って補助サービスだけを許可範囲とする
+準備用ジョブを作り、人間承認後のprepareの検証証拠から200とJSONのms=0を確認してください。
+必要な観測通信がなければ先に記録方法を案内してください。直接送信で迂回しないでください。
+Active Scanのexecuteは開始しないでください。
+```
+
+この0秒の確認はサービスの疎通確認であり、診断用の待機時間測定や診断対象の最終構成の5回確認には数えない。管理版prepareは同じ疎通要求を5回以上送るため、単発確認として説明しない。従来版を明示的に使う場合だけ、公開HTTP送信Toolで1回確認できる。メールAPIのhealth確認にも同じ操作経路の区別を適用する。今回のAPIトークンを設定した通信を使い、401ならトークン、503なら`-Mail`付き起動と認証設定を確認する。メール発行前の監視作成、未着202、取得成功200・status=readyの扱いは診断仕様第4.9章に従う。メールを使わない場合は、通常起動でメールAPIが503になることを起動失敗としない。
+
+## 4 診断用Projectを作成して保管する
+
+1. Burpの起動画面で **New project on disk** を選ぶ。
+2. このPCの `burpdata\<案件名>.burp` を保存先にする。案件や診断対象ごとに分け、既存ファイルを上書きしない。
+3. 診断の区切りやBurp再起動前に、Projectの保存が完了していることを確認する。
+4. 診断を再開するときは、その `.burp` を開くか、起動画面で **Open existing project** から選ぶ。
+
+ディスクProjectは作業をファイルへ保存する。Temporary projectで作業を始めた場合は、BurpのProjectメニューの保存機能を使い、終了前に `burpdata` のProjectファイルへ保存する。Projectファイルと、設定だけを保存したJSONは別のものなので、設定JSONだけを残して終了しない。
+
+Projectファイルを開いても、対象アプリのDBが初期化・復元されるわけではない。
+
+初回はBurpの既定設定で新しいProjectを開始する。過去のProject settings JSONや`nothing.burp`の読み込みは不要である。ライセンス認証のため先にBurpを開いていた場合も、診断に使うProjectの選択・保存を済ませてから第6章へ進む。
+
+## 5 ビルド済みMCPファイルを確認する
+
+利用者はMCP Serverをビルドしない。通常-reの配布済みJARを確認する。次は独立導入の例である。同じ開発PCのdiagnosisを使う場合は、$mcpHomeを親に既設の正式MCPディレクトリーへ合わせる。受領した版の実パスを使い、現在の作業場所から推測しない。変数は別のPowerShellで実行するときは改めて設定する。
+
+```powershell
+$mcpHome = Join-Path $setupRoot 'mcp-server'
+$mcpJar = Join-Path $mcpHome 'build\libs\burp-mcp-all.jar'
+$proxyJar = Join-Path $mcpHome 'libs\mcp-proxy-all.jar'
+Test-Path -LiteralPath $mcpJar
+```
+
+Falseの場合は配布物の不足として担当者へ連絡する。`mcp-proxy-all.jar`は`burp-mcp-all.jar`へ同梱されているため、別の配布必須品ではない。stdio接続では同じ配布JAR内のものを使い、既に取り出してある場合は対応する版かを担当者へ確認する。未配置の場合は次で`libs`へ取り出せる。既存ファイルを上書きしない。
+
+```powershell
+if (-not (Test-Path -LiteralPath $mcpJar)) { throw '配布済みMCP JARがありません' }
+if (-not (Test-Path -LiteralPath $proxyJar)) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $mcpBundle = [System.IO.Compression.ZipFile]::OpenRead($mcpJar)
+    try {
+        $proxyEntry = $mcpBundle.GetEntry('mcp-proxy-all.jar')
+        if ($null -eq $proxyEntry) { throw '同梱proxyがありません。配布担当者へ確認してください' }
+        New-Item -ItemType Directory -Path (Split-Path -Parent $proxyJar) -Force | Out-Null
+        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($proxyEntry, $proxyJar, $false)
+    } finally {
+        $mcpBundle.Dispose()
+    }
+}
+Test-Path -LiteralPath $proxyJar
+```
+
+## 6 BurpへMCP Serverをロードする
+
+1. Burpの **Extensions → Installed → Add** を開く。
+2. Extension typeを **Java** にする。
+3. 通常-reは`mcp-server\build\libs\burp-mcp-all.jar`を指定する。
+4. Nextでロードする。
+5. **Burp MCP Server -re**のロードと**MCP -re**タブの確認モード表示を確認する。Errorsに例外がある場合は接続設定へ進む前に確認する。
+
+従来版を明示的に使う場合はmcp-server\build\libs\burp-mcp-all.jarを選ぶ。同じポートのMCPを複数ロードしない。既存環境の切り替えは診断・設定復元を保護して診断外の保守として行い、診断中に再ロードしない。
+
+管理MCPはロードしたJARの配置から`runtime/settings.json`と保護された`runtime/operator-secrets.json`を読み、初回は必要なローカル設定を生成する。通常の起動に環境変数付きの専用スクリプトは不要である。初期の`verifiedCapabilities`は空とする。配布MCPのINSTALL-WINDOWS.mdに従い、公開diagnostic_jobのverify_scanner_workflowと必要な場合のverify_dynamic_workflowで、このPCの固定ローカル対象を検証し、画面での人間承認後に証拠付きで登録する。登録の読込みは全検証終了と設定復元を確認した後のMCPだけの導入保守として行う。AIが自己宣言で能力名を書き足したり、資格情報をチャットへ表示したりしない。
+
+通常-reのREVIEWで運用する。MCPタブの実効モードを確認し、REVIEWでなければ診断へ進まず担当者へ設定確認を依頼する。
+
+MCPタブで以下を設定する。表の接続先は初期値であり、変更した場合はクライアント設定も合わせる。
+
+| 設定 | 初回セットアップ |
+| --- | --- |
+| Enabled | ON |
+| Host／Port | 127.0.0.1／9876 |
+| Enable tools that can edit your config | REVIEWではON。検証済みジョブによる反映を許可するために必要で、管理中の直接書込みを解禁するものではない |
+| Require approval for HTTP requests | ONで確認しながら使用し、診断ジョブの人間承認も別途行う |
+| Require approval for project data access | 初回はON。Proxy／WebSocket履歴、Organizer、MCP Loggerの読み取り時の承認に応答。設定取得はこの承認の対象外 |
+| Filter config credentials | 基本はON |
+
+許可対象の自動承認設定を使う場合は、対象ホスト・ポート等の形式を接続先の設定説明で確認し、診断対象だけを指定する。プロジェクトのTarget Scopeと、MCPの送信承認は別の設定である。
+
+`Always allow MCP Logger capture access` 等は、その版に項目がある場合だけ設定する。
+
+## 7 BurpへCPHをロードする
+
+1. Burpの **Settings → Extensions → Python environment** を開く。
+2. **Location of the Jython standalone JAR file** に、`runtime\jython-standalone-2.7.4.jar` を指定する。
+3. **Folder for loading modules**に、このPCの`burp-cph`フォルダーの絶対パスを指定する。従来CPHの補助モジュールと混在させない。
+4. **Extensions → Installed → Add** を開き、Extension typeを **Python** にする。
+5. `burp-cph\CustomParamHandler_marged_api_v0.2.py`を指定してNextを押す。
+6. **Custom Parameter Handler -re v0.3**のロード、**CPH Config -re**タブ、およびAPI起動の出力を確認する。配置互換性のためソースファイル名は`CustomParamHandler_marged_api_v0.2.py`を維持している。
+
+```text
+Local API server started on http://127.0.0.1:17866
+```
+
+`CPH_API_v0_2.py` を単独のExtensionとしてAddしない。BApp Storeの標準CPHやUpstreamの別ファイルではなく、指定リポジトリのカスタム本体をロードする。[BurpのPython環境の説明](https://portswigger.net/burp/documentation/desktop/settings/extensions)
+
+CPH -re一式には関連モジュールとruntime/cph-connection.jsonを含め、受領した兄弟配置を保持する。通常-reを先にロードしてローカル設定を用意してからCPH -reをロードする。接続設定はMCP -re側のruntimeを参照する。別PCの秘密情報をコピーしたり、従来CPHのAPIを管理APIの代用にしたりしない。
+
+初回は利用者がCPH ConfigのOptionsで今回使用するTool scopeを設定する。MCP送信とScanner、Repeaterを使う場合は**Extender・Scanner・Repeater**を有効にする。Proxy等は必要な場合に追加する。CPHはBurpのTarget Scopeも参照するため、診断対象のScope設定を後述の手順で行う。管理モードの対象別設定変更は以後ジョブ経路で行う。
+
+第9章のMCP `get_cph_config`で`success: true`、`managed: true`と現在の設定を確認する。管理APIはローカル認証を使うため、AIがトークンを取り出して直接APIを呼ぶ手順にはしない。APIの成功と、対象通信での動的置換の確認は別である。
+
+## 8 AIクライアントから接続する
+
+接続には付属の **stdio proxy** を使う。AIクライアントが起動するのはproxyであり、Burp本体は事前に起動しておく。
+
+| ポート | 役割 |
+| --- | --- |
+| 9876 | Burp MCP Server。AIからの操作入口 |
+| 17866 | CPH設定API。MCPクライアントの接続先には指定しない |
+| 185 | Integrale_mocks。必要な場合だけ起動する待機・メール取得用HTTPサービス |
+| 8080 | Burp Proxyの一般的な初期ポート。ブラウザー通信の記録用 |
+
+proxyの起動コマンドは次の形になる。
+
+```text
+"<Burp同梱java.exeの絶対パス>" -jar "<mcp-serverの絶対パス>\libs\mcp-proxy-all.jar" --sse-url http://127.0.0.1:9876
+```
+
+`--sse-url` は付属proxyが受け付ける引数である。SSEとStreamable HTTPの設定を混同して、クライアントのHTTP接続先へそのまま当てはめない。
+
+proxyはAIクライアントであり、BurpへロードするMCP拡張とは別物である。AIを`/diagnosis/worker`や17866へ接続せず、通常のMCP入口を使う。proxyの一時ログやクライアント用スクリプトがtempにあっても、運用するMCP本体のJARをtempへ置かない。
+
+### Codexの設定例
+
+WindowsのCodex対応デスクトップ環境は[公式Windows案内](https://learn.chatgpt.com/docs/app/windows)に従って導入・サインインする。作業場所には診断用4ファイルのあるディレクトリー（このワークスペースならdiagnosis、独立導入例ならBurp-diagnosis）を選ぶ。MCP接続の設定は[OpenAIの公式MCP説明](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)に従う。以下は`%USERPROFILE%\.codex\config.toml`の追記例で、パスは独立導入を示す。既存の他サーバー設定は保持する。
+
+```toml
+[mcp_servers.burp]
+command = 'C:\Users\<ユーザー名>\AppData\Local\Programs\BurpSuite\jre\bin\java.exe'
+args = [
+  "-jar",
+  'C:\Users\<ユーザー名>\Desktop\Burp-diagnosis\mcp-server\libs\mcp-proxy-all.jar',
+  "--sse-url",
+  "http://127.0.0.1:9876"
+]
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+```
+
+`<ユーザー名>` は実際のWindowsユーザー名へ置き換える。commandは第2章で確認したBurp同梱Javaの絶対パスにする。TOMLの一重引用符内ではWindowsパスのバックスラッシュをそのまま記載できる。
+
+設定先のフォルダー・ファイルが未作成なら作成し、既存なら設定を追記する。同じ`[mcp_servers.burp]`を二重定義しない。上の120秒は例であり、長いMacro・待機・メール取得を使う場合は、一連の処理時間に合わせてHTTPとMCP双方のタイムアウトを確認する。タイムアウトしてもBurp側で処理が続いている可能性があるため、登録やScan開始を無条件に再送しない。
+
+設定保存後、クライアントのMCP接続をRestartするか、アプリを再起動する。CLIを導入している場合は `codex mcp list` でも登録を確認できる。標準入出力型（STDIO）を登録するUIがあるクライアントでは、同じcommandとargsを入力してもよい。
+
+### Claude Codeでの読み込み
+
+[Claude Code公式の導入手順](https://code.claude.com/docs/en/quickstart)に従ってWindows版を導入する。WinGetを使用できる場合は次を実行し、PowerShellを開き直してバージョンを確認する。WinGetがない場合は同じ公式手順のWindows向けインストーラーを使用する。
+
+```powershell
+winget install Anthropic.ClaudeCode
+```
+
+```powershell
+claude --version
+```
+
+第3章のとおり、診断用プロジェクト直下へAGENTS.md・spec.md・CLAUDE.md・read.meを配置する。次はWindowsのPowerShellでの登録例である。`$setupRoot`には第3章で選んだ作業場所、`$burpJava`には第2章で確認したJavaの絶対パス、`$mcpHome`には第5章で選んだMCPの絶対パスを設定してから実行する。別のPowerShellを開いた場合は、これらの変数を改めて設定する。
+
+```powershell
+Set-Location -LiteralPath $setupRoot
+claude mcp add --transport stdio --scope local burp -- "$burpJava" -jar "$mcpHome\libs\mcp-proxy-all.jar" --sse-url http://127.0.0.1:9876
+claude mcp get burp
+claude
+```
+
+`local`は、このPCの現在の作業フォルダーに対応する登録である。登録済みの場合は先に`claude mcp get burp`で内容を確認し、既存の別設定を勝手に削除しない。初回起動時は案内に従って利用アカウントへサインインする。登録コマンドの成功は接続成功ではないため、Burpを起動した状態で`/mcp`から実際の接続とToolを確認する。[MCP登録の公式説明](https://code.claude.com/docs/en/mcp)
+
+CLAUDE.mdの`@AGENTS.md`から共通ルールが読み込まれ、AGENTS.mdの指示に従ってspec.mdも最後まで読まれていることを確認する。入口ファイルを置いただけで、MCP接続やBurp UI操作が可能になったとは判断しない。確認条件は[Claude Code用の入口](CLAUDE.md)を参照する。
+
+### Claude Desktopの設定例
+
+1. [Claude Desktop](https://claude.ai/download)のWindows版を導入し、アカウントでサインインする。一度起動してから設定する。
+2. **Settings → Developer** のMCP設定を開く。**Edit Config** がある版では、そのボタンで設定ファイルを開く。標準的なWindowsの保存先は `%APPDATA%\Claude\claude_desktop_config.json`。Microsoft Store版などでは保存先が異なるため、アプリが示す設定ファイルを優先する。
+3. 次のburp設定を追加する。既存のmcpServersがある場合は、その中へburpの項目だけを追加する。
+
+```json
+{
+  "mcpServers": {
+    "burp": {
+      "command": "C:\\Users\\<ユーザー名>\\AppData\\Local\\Programs\\BurpSuite\\jre\\bin\\java.exe",
+      "args": [
+        "-jar",
+        "C:\\Users\\<ユーザー名>\\Desktop\\Burp-diagnosis\\mcp-server\\libs\\mcp-proxy-all.jar",
+        "--sse-url",
+        "http://127.0.0.1:9876"
+      ]
+    }
+  }
+}
+```
+
+4. `<ユーザー名>` とcommandのJavaパスを実際の値に置き換え、保存する。JSONではバックスラッシュを2個にする。
+5. Claude Desktopを完全終了してから起動し直す。ウィンドウを閉じるだけで常駐している場合は、終了操作も行う。
+6. Developer設定の接続状態・ログ、またはチャットの **＋ → Connectors** でburpとToolを確認する。
+
+手動設定の形式と保存先は[MCP公式のClaude Desktop接続例](https://py.sdk.modelcontextprotocol.io/get-started/real-host/)を参照する。接続状態の確認は[ClaudeのローカルMCP案内](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)に従う。これはローカルMCP接続であり、クラウド側のRemote connectorへ127.0.0.1を登録する方法とは異なる。
+
+初回のExtensions追加は、この手順書に沿って利用者が操作してよい。AIにWindows画面でAdd／Removeや再起動を任せる場合は、対応するComputer Use環境も別途用意する。[公式のComputer Use案内](https://learn.chatgpt.com/use-cases/use-your-computer-with-codex)を参照し、通常の診断操作はMCP Toolを優先する。
+
+## 9 接続確認をする
+
+AIクライアントで以下を依頼する。
+
+```text
+Burp接続チェックをしてください。
+```
+
+AIは毎回その場で考えた、動物や食べ物などを題材にした明るい短いジョークを`base64_encode`へ渡す。ジョークと一目で分かる内容にし、診断・障害・緊急事態を連想させる表現は使わない。Toolの正常応答を受け取った場合は「Burpと接続確認できました。」、返されたBase64値、実際に送ったジョーク全文を表示する。詳細は同じディレクトリーの`spec.md`第2.1章を参照する。
+
+日本語の変換では、encode・decodeの両Toolにcharset="UTF-8"を指定し、元の全文へ戻ることも確認する。Toolのスキーマにcharsetがなければ再接続して一覧を更新し、それでも引数がない場合は対応版を配布担当から取得する。
+
+これはBurp MCPのユーティリティー応答の確認であり、CPHや診断対象の正常性を保証しない。接続確認だけでは対象への送信、設定変更、Active Scanは行わない。接続失敗時に、ローカルでBase64値を作って成功扱いにしない。
+
+初回セットアップ時にCPHとProject設定も確認する場合は、続けて以下を依頼する。
+
+```text
+get_cph_configとoutput_project_optionsを取得し、CPH接続と現在のBurp設定の読取可否も確認してください。
+Active Scanや診断対象への送信、設定変更は行わないでください。
+```
+
+初回セットアップの確認条件：
+
+- Burp MCPのbase64_encode・base64_decodeが今回の呼出しに正常応答し、UTF-8の復号全文が一致する。
+- `output_project_options` で現在のBurp設定を読める。
+- `get_cph_config`で`success: true`、管理版では`managed: true`と現在のCPH設定が読める。
+- 通常-reでは実効モードがREVIEWで、`diagnostic_job`とその最新のDescription・入力スキーマを取得できる。
+- MCPやCPHのErrorsに起動失敗がない。
+
+この段階ではMacro・Rule・CPHの診断用設定や対象の履歴が空でもよい。設定・履歴を読み取れることと、対象に対する診断準備が成立したことは分けて判断する。管理モードでは直接のHTTP送信・設定変更・CPH Import・Scan開始が拒否されるのが正常である。それらの機能は、必要な正常履歴が揃った後に、ジョブとREVIEWの人間承認を経て確認する。読取接続確認だけのために送信・Scanを実行しない。
+
+Tool一覧はロードしたJARで確認する。診断に必要なToolがない場合は、担当者へ連絡して対応するビルド済みJARを受領する。Tool名を推測して、実行済みとして扱わない。
+
+## 10 対象通信を履歴に記録する
+
+1. 診断対象へこのPCから接続できることを確認する。localhostはこのPC自身であり、旧PC上のアプリへ自動的にはつながらない。
+2. Burpの **Target → Scope** に許可された対象のprotocol・host・portを含むURLを追加する。
+3. **Proxy → Open browser** でBurpのブラウザーを開く。
+4. ブラウザー操作が停止しないよう、必要に応じてInterceptをOFFにする。
+5. 正常なログイン、対象機能、一覧・詳細等の確認先、ログアウト、診断用データの削除を操作する。
+6. Proxy HTTP historyで、必要なRequestとResponseが記録されていることを確認する。
+
+外部ブラウザーを使う場合は、Burp Proxyへの接続とHTTPS用CA証明書の設定が別途必要になる。初回はBurpのブラウザーから記録すると設定箇所を減らせる。
+
+リポジトリのcloneやCPHのロードだけでは対象通信の履歴は作られない。AIが実際の通信を使ってMacro等を構成できるよう、診断前に必要な一連の操作を記録する。
+
+対象を指定するときは、完全なURLだけでなくHTTP methodと機能も伝える。同じURLのGET・POST・DELETEは別の処理である。Request IDを使う場合は現在のProjectのProxy HTTP historyの番号を指定する。AIが今回の対象を特定できない場合は、対象操作を追加記録するか該当Request IDを伝え、過去の別環境のIDで代用しない。
+
+## 11 診断時のプロンプト例
+
+以下の `<...>` は実際の対象・条件へ置き換える。CodexでもClaude Codeでも、第3章の診断用プロジェクト直下を作業場所として開く。Codexは直下のAGENTS.mdを入口とし、Claude Codeは直下のCLAUDE.mdからAGENTS.mdを読み込む。いずれもAGENTS.mdの指示に従って同じ場所のspec.mdを全文読む。通信の準備依頼とスキャン開始依頼を分ける。
+
+新しいセッションでは、最初に「適用中の診断用AGENTS.md、全文を読んだspec.md、作業用tempの絶対パスを示してください。まだ対象へ送信しないでください」と依頼し、3つが同じ診断用プロジェクトを基準にしていることを確認する。個人設定、親ディレクトリー、配布された各コンポーネントの配下に別の指示ファイルがある場合は、その適用範囲と矛盾を確認する。文書を置いたことだけで、読み込み済みとは判断しない。[CodexのAGENTS.md読込仕様](https://learn.chatgpt.com/docs/agent-configuration/agents-md)、[Claude Codeの読込・Import仕様](https://code.claude.com/docs/en/memory)
+
+CodexがProjectルートから診断用ディレクトリーまでのAGENTS.mdを併読する場合は、親を含む内容と優先関係を確認する。自動読込には既定32KiBの合算上限があるため、グローバル指示等の追加分も考慮し、全文が自動で入ったと仮定しない。診断用AGENTS.md・spec.mdを明示的に最後まで読み、不足は追加取得する。CLAUDE.mdは各用途の同じ場所のAGENTS.mdを読み込み、開発用入口から診断用を自動Importしない。
+
+ローカルファイルを読めないクライアントでは、診断用AGENTS.mdとspec.mdをチャットへ添付し、両文書の全文を読めることを確認する。Claude DesktopのMCP接続設定だけでは、これらのローカル文書が自動的に読み込まれるとは扱わない。
+
+### 診断準備
+
+```text
+診断用プロジェクト直下のAGENTS.mdに従い、同じ場所のspec.mdを全文読んでください。
+診断対象は<対象の絶対URL>の<登録／更新／ログイン等の機能>です。
+HTTP methodは<GET／POST等>です。対象は今回記録した<Proxy Request ID／該当する履歴>です。
+診断する入力は<今回依頼する入力名・位置>です。依頼入力と各構成の実選択を照合し、
+範囲外の入力は理由とともに別記してください。依頼入力を設定の都合で減らさないでください。
+今回はActive Scanの準備まで行い、スキャンは開始しないでください。
+通常-reのREVIEWを使い、診断ジョブとして計画を作成してください。
+検証送信の前に、対象範囲、前後処理、登録・更新・削除等の副作用と制約を示してください。
+
+Burpの履歴から実際のRequestと依存する通信を特定してください。
+必要な認証・token取得等の前処理を判断して設定してください。
+認証が必要な対象では、Check session is validを使う・使わない理由を説明してください。
+削除・ログアウト等の処理が必要な場合は、観測した通信に基づいて構成してください。
+保存結果を確認する別Requestがあるか調べ、必要な診断構成を用意してください。
+元からあるデータは保持し、診断で作成したデータの選択条件を明確にしてください。
+
+最終構成ごとにMCP Toolで5回以上テスト送信し、処理順序、動的値、
+返却レスポンス、後処理を確認してください。途中に失敗がある場合は原因を調べてください。
+管理モードではdiagnostic_jobのpropose→prepareを使い、必要な分岐も検証してください。
+Burpの準備承認は私が操作します。validationの全証拠を確認してください。
+preparationOnceがある場合は反復検証とは別に全件を確認してください。
+ジョブの識別情報・検証結果を保存して、元設定へ復元したことを確認してください。
+Macro・Rule・CPHの名前、適用Scope、確認結果、未成立条件を報告してください。
+作業用ファイルは、AGENTS.mdとspec.mdを配置した診断用プロジェクト直下のtempへ保存してください。
+```
+
+ProxyのUI上のRequest IDで対象を指定する場合は、URLの代わりに次のように依頼できる。
+
+```text
+現在のBurp ProjectのProxy HTTP historyにあるRequest ID <UIの#列の値>を取得し、
+method・URL・内容を確認して診断対象にしてください。
+```
+
+ProxyのIDは`get_proxy_http_request_by_id`で取得できる。LoggerのUI番号による直接取得は現状未対応であり、同じ数字のMCP独自idやmessageIdで代用しない。LoggerのMCP記録を指定する場合は、識別子の種類と元のcaptureIdを併せて伝える。詳細は[診断仕様 第4.8章](spec.md#48-request-idでの通信指定)を参照する。
+
+REVIEWの準備は設定反映と検証通信を伴い、Scan開始とは別の承認になる。Burpの「診断ジョブの人間による承認」で、ユーザーが計画と対象を確認し、下部の確認欄にチェックしてOKを押す。チャットの「ok」だけでは承認されない。準備終了後は元設定へ戻るため、Macro・CPHが常時有効でなくても、保存された検証済み計画と証拠を確認する。これを設定失敗と判断して手動で再有効化しない。
+
+対象別のMacro・Rule・CPHは今回の通信から構成でき、固定設定だけに依存しない。共有CPHキャッシュを使う場合は`variants[].settings.serialScannerRequests=true`を計画へ含め、無関係なTaskが同じDefault resource poolを利用していないことを確認する。実行サービスが準備・Scan・正常再送の間だけ上限1を適用し、各段階後に元値へ戻す。未対応版ではこの自動管理があると仮定しない。
+
+### Active Scanの開始
+
+```text
+準備済みの<対象URL／機能>にActive Scanを実行してください。
+保存済みのジョブ<executionId>と期限内の検証証拠を確認し、
+diagnostic_jobのplan_nextへ現在のexecutionIdとnextTargetsJsonで残対象を依頼順に宣言してください。
+残対象がない最後の対象も、nextTargetsJson="[]"を明示してください。
+確認したvalidationDigestでdiagnostic_jobのexecuteを開始してください。
+Burpの実行承認は私が操作します。
+必要な前処理・確認先・後処理は検証済み計画を実行サービスに適用させてください。
+複数の確認構成がある場合は、先行スキャン完了後に排他的に切り替えて実行してください。
+スキャンの識別情報、完了状態、エラー、検出結果を確認してください。
+get_active_scan_statusで進捗を確認し、初期概算と実測送信速度で補正した残り時間を、
+算出根拠・不確かさとともに報告してください。推定できない場合はその理由を示してください。
+完了後は実行サービスによる正常再送の証拠を読み、開始前の業務状態と比較してください。
+サービスが実施した操作を重複送信せず、結果・通信証拠の必要な全ページを確認してください。
+復元結果、残存する診断データ、未検証範囲も報告してください。
+```
+
+依頼方法は従来と同じく「Request IDを指定して認証・Macro・CPHを確認し、ActiveScanを実施」でよい。AIが内部でジョブを作成し、通常-reでは準備と実行の承認をユーザーへ提示する。利用者が契約JSONを手書きする必要はない。
+
+### 結果の整理
+
+```text
+今回の<対象URL／機能>の診断結果を整理してください。
+今回のスキャンと以前のIssueを区別し、対象、Severity、Confidence、
+証拠となるRequest／Response、再現確認、未検証条件をまとめてください。
+情報レベルの反射やJSON応答への文字列挿入を、実悪用を確認したXSSと断定しないでください。
+BurpのReport issueに含めるIssueの選択範囲も示してください。
+```
+
+診断の成立条件、ログイン等の機能別手順、設定後の確認回数の扱いは[診断仕様](spec.md)を参照する。AIに古い固定ID・古いtoken・別PCの正解設定を渡して、それを現在の状態として使用させない。
+
+残り時間は概算であり、完了時刻の保証ではない。推定のためだけに比較用Scanを追加しない。計算と推定不能条件は[診断仕様 第6章](spec.md#6-active-scanと完了条件)を参照する。
+
+### Scanのキャンセル・Pause／Resume
+
+個別Scanのキャンセル、一時停止（Pause）、再開（Resume）は、現状MCP Toolでは未対応のため、BurpのUI上で行う。Dashboardで開始時の記録と対象・タスクを照合し、該当するScanだけを操作する。利用者が操作するか、AIへ依頼する場合は対応するComputer Use環境を使う。
+
+Pause・Resumeは対象Task全体への操作であり、同じTask内の複数Scanに作用する。1件だけの停止・再開を求められた場合に、ほかのScanを含むTask全体の操作で代用しない。Cancelは指定Requestに対応するAudit itemを選んで行う。対象の特定と操作範囲は診断仕様第6章に従う。
+
+操作後はUIで対象タスクの状態を確認し、MCPで追跡できるAuditは`get_active_scan_status`でも状態を確認する。MCPで取得・判定できない状態は、その制約を明示する。キャンセルを正常完了と扱わず、タスク削除や全タスク実行エンジンの停止で個別キャンセル・Pauseを代用しない。再開時は同じScanを継続し、認証・token・診断用データの状態を確認する。停止だけで進行中の通信や作成済みデータが取り消されたと判断せず、部分結果と必要な後処理を確認する。
+
+## 12 BurpのIssueレポートを出力する
+
+HTMLは閲覧・共有用、XMLは他ツールで扱うためのIssueデータ用。`.burp` は診断作業を再開するためのProjectであり、HTML／XMLの代替ではない。MCPで作成した結果JSONも、BurpのReport issue出力とは別のファイルである。
+
+### 対象ホストのIssueをまとめて出力する
+
+1. スキャン完了と対象の結果を確認する。
+2. **Target → Site map** を開く。
+3. 左のツリーで対象のprotocol・host・portを選ぶ。
+4. 右クリックし、**Issues → Report issues for this host** を選ぶ。
+5. レポートウィザードで **HTML** または **XML** を選ぶ。
+6. 出力するIssueの種類・件数を確認し、今回の報告に必要なものを選ぶ。
+7. HTMLの場合はタイトル等を入力し、Request／Responseの掲載範囲を選ぶ。
+8. 保存先とファイル名を指定して完了する。拡張子 `.html` または `.xml` を含める。
+
+この方法は、そのホストの以前の診断Issueも含み得る。今回だけを報告したい場合は次の選択出力を使う。[PortSwiggerのレポート生成手順](https://portswigger.net/burp/documentation/desktop/getting-started/generate-reports)
+
+### 選択したIssueだけを出力する
+
+1. Dashboardで対象タスクを選び、**Issues** を開く。またはTargetのSite mapにあるIssues一覧を開く。
+2. URL、証拠通信、対象タスク等を確認して報告するIssueを選ぶ。複数選択はCtrlまたはShiftを使う。
+3. 右クリックし、**Report selected issues** を選ぶ。単一選択では **Report issue** と表示される版・画面もある。
+4. 同じレポートウィザードでHTML／XML、Issueの選択、証拠掲載範囲、保存先を設定する。
+
+右クリックした場所によってメニューは異なる。Requestだけを選択する **Save selected items** は、通信の保存でありIssueレポートではない。[Issues一覧の操作説明](https://portswigger.net/burp/documentation/desktop/running-scans/results/issues)
+
+### レポート設定と出力後の確認
+
+- 作業用レポートの最初の保存先は、診断用プロジェクト直下の `temp\reports` 等にする。提出用の最終版は、指定された保管場所へ保存する。
+- HTMLのRequest／Response掲載は、再現根拠を確認できる範囲を選ぶ。Cookie、Authorization、個人情報が含まれる場合は、提出版の編集・マスキング方針を決める。
+- XMLでは、HTTPメッセージの掲載設定と必要に応じたBase64エンコード設定を確認する。Base64は秘密情報の削除ではない。
+- 出力後にHTMLを開き、対象ホスト、タイトル、Issue件数、Severity、Confidence、証拠を確認する。XMLはパーサーやエディターで読めることを確認する。
+- IssueのSeverityとConfidenceは別の値である。スキャンが完了したことや情報レベルの指摘だけで、脆弱性の成立を断定しない。
+- Issueが0件の場合でも、対象・実施構成・完了状態・エラー・未検証範囲を別途記録する。空のIssue一覧だけでは診断範囲や正常動作を説明できない。
+
+設定項目の詳細は[PortSwiggerのReport settings](https://portswigger.net/burp/documentation/desktop/running-scans/reporting/report-settings)を参照する。HTMLからPDFが必要な場合は、HTMLをブラウザーで開いて印刷保存する。Burp Professionalの標準Issue出力形式と、DAST版のPDFレポート機能を混同しない。
+
+## 13 エラー時の確認と更新
+
+| 症状 | 確認・対応 |
+| --- | --- |
+| Javaが起動しない | Burp同梱java.exeの絶対パスと、AI設定のcommandを確認 |
+| 配布JARが見つからない | clone先と配布物を確認し、担当者からビルド済みJARを受領 |
+| MCP JARのロード失敗 | 正しい配布JARを選んでいるか、Burpの版とExtensionsのErrorsを確認 |
+| CPHでNo module named CPH_API_v0_2 | CPH一式が同じ取得フォルダーにあるか、Python environmentのFolder for loading modulesを確認 |
+| MCP Toolが出ない | Burp起動、MCP Enabled、9876、proxyのcommand／args、クライアントの接続再起動を確認 |
+| 9876や17866でポート競合になる | エラーに示されたポートと既存プロセスを確認する。9876はMCP、17866はCPHの問題として切り分け、CPHの場合は下記の復旧手順へ進む。無関係なプロセスを終了しない |
+| 設定変更Toolが無効 | REVIEWのジョブ反映権限はEnable tools that can edit your configを確認。管理中の直接変更は有効化されない |
+| MANAGED_MODE_JOB_REQUIRED | 設定反映・送信・Scan・回復はdiagnostic_jobへ変更する。UI Import、直接API、管理解除で迂回しない |
+| 準備・実行が承認待ち | REVIEWではBurp画面の確認欄とOKをユーザーが操作する。チャットのokだけでは成立しない。画面が見つからなければ前面表示を依頼する |
+| HUMAN_DENIED | 拒否を保存し、自動で承認画面を再表示しない。同じ計画の再提示もユーザーの明示指示後に行う |
+| 操作がタイムアウト・結果不明 | 同じexecutionId・operationIdを照会し、Logger・保存結果を確認する。別IDでproposeやScanを重複開始しない |
+| HELPER_TRAFFIC_NOT_QUIESCENT等で回復拒否 | 終了・補助通信・競合の証拠を確認して担当者へ引き継ぐ。ログ・台帳削除や再ロードで回復済みにしない |
+| 履歴取得・送信が止まる | Burp側の承認、対象URL、Target Scope、ジョブ状態を照合。管理中の追加送信は承認済みジョブで行う |
+| CPH Import成功なのに置換されない | 稼働中CPH、対象Scope、Tool scope、トリガー、置換先、実通信を確認。成功応答だけで適用済みとしない |
+| sleep補助サービスへ接続できない・応答がない | MCPで確認し、指定待機時間と通信余裕を含むタイムアウト内に応答がなければ、ユーザーへサービスが起動しているか確認する。待機中の無応答を即座に異常とせず、必要なsleepを省略してScanを開始しない |
+| メールAPIが401／503になる | 401は起動時とRequestのローカルAPIトークンの一致、503は`-Mail`付き起動を確認する。Gmail認証の失敗は`-CheckMailAuth`で別に切り分ける。通常起動でメールを使わない場合の503は想定内 |
+| Active Scanが進まない | 追跡中のAuditはget_active_scan_statusで確認し、未対応・不明状態はUIで補完する。個別Pause／Resume・CancelはUIで行い、関係のないタスクをまとめて停止・再開しない |
+| Report issueが見つからない | Issues一覧のIssueを選び直す。ホストのメニューと通信行のメニューを区別する |
+
+### CPHの再ロードとポート競合
+
+過去のCPHでは、Unload／Remove後にAPIの17866が残り **Address already in use** になる問題があった。CPH 0.3では内蔵demo停止時にAPI終了用ハンドルを失う経路を修正している。ただし、局所的な修正だけで同じBurpプロセス内の再ロード全般が成立すると判断しない。旧コードや残留待受による設定実体の分離を避けるため、Unload／Remove後は以下のBurp再起動手順を維持し、同じBurp内で再Addを繰り返さない。
+
+診断中のMCP・CPH再ロードは禁止する。コード更新・ポート競合の保守が必要なら、現在の実行と設定回復を保護し、必要なユーザー承認を得て診断外で行う。ログ容量の対処に再ロードを使わない。管理ジョブの停止後の設定復元は、終了証拠を添えた`diagnostic_job`の`recover`を先に使う。拒否時にUI Importで迂回せず、[診断仕様 第2.3章](spec.md#23-管理ジョブの停止後の回復)の条件と不足を確認する。
+
+CPHコードを更新した場合、またはこのエラーが出た場合の保守手順：
+
+1. 実行中のスキャンをMCPのget_active_scan_statusで確認し、再起動で中断する診断を保護する。UI起点や再ロード前のScanは追跡できないため、該当するものはUIでも確認する。空一覧だけで全Scan終了と判断しない。
+2. 現在のProjectを `burpdata\<案件名>.burp` に保存する。ディスクProjectの場合は保存完了を確認し、Temporary projectの場合はProjectファイルとして保存する。
+3. CPHの設定をExportして診断用プロジェクト直下の `temp` に退避する。Projectの保存だけでCPHの設定まで復元できるとは仮定しない。
+4. 更新・競合復旧のいずれもCPHをRemoveしてからBurpを終了し、プロセスの終了を確認する。既にRemove済みなら繰り返さない。
+5. 保存した `burpdata\<案件名>.burp` を開いてBurpを再起動する。同じ診断Projectを使い続ける。
+6. CPHが未登録の場合は更新した本体をAddする。登録済みの場合はロード状態を確認し、重複してAddしない。CPH APIの起動に成功したことを確認する。
+7. MCPを再接続し、ProjectのMacro・Rule・ScopeとCPH設定を読み戻す。管理版の設定反映・回復はジョブ経路で行い、未完了実行を復元済みと仮定しない。必要な動作確認は診断仕様の条件で再検証し、以前のScanを自動再開しない。
+
+MCP Serverの更新は、担当者が配布した新しいビルド済みJARへ入れ替える。利用者側の再ビルドは不要。設定だけのImport／Exportは、コード更新や拡張再ロードではない。
+
+MCP拡張の再ロード・Burp再起動により、それ以前のAudit参照と推定履歴は失われる。Projectを再度開いても以前のAuditをMCPで追跡できるとは限らないため、実行中のScanがある間は更新を待ち、終了状態・結果・対象タスクを記録してから行う。
+
+## 14 利用開始の確認票
+
+- [ ] Professionalライセンスが有効で、Burpが起動する。
+- [ ] Burp同梱のJavaが起動し、配布済みMCP Server／proxyのJARが揃っている。
+- [ ] 診断Projectをburpdataに保存し、再起動後に同じProjectを開ける。
+- [ ] カスタムMCP ServerとカスタムCPHが各1件ロードされ、起動エラーがない。
+- [ ] 通常-reではMCP -re／CPH -reの正式ファイルをロードし、実効モードがREVIEWである。
+- [ ] Jython standaloneとCPHの補助モジュールの場所が正しい。
+- [ ] AIクライアントからMCP Toolを使える。
+- [ ] MCPとCPHを別々に接続確認した。
+- [ ] 対象への接続、Target Scope、正常な操作履歴が揃っている。
+- [ ] 診断用AGENTS.md・spec.mdをAIへ明示した。
+- [ ] AIが作業用tempへ記録を保存・読み戻しできる。必要なBurp UI操作はAIまたは利用者が担当できる。
+- [ ] 待機・メール機能を使う場合は補助サービスを別途準備し、実際に必要なAPIと認証を確認した。
+- [ ] 診断に必要なToolが接続先に実在する。
+- [ ] 管理版のdiagnostic_job、ローカル認証、担当者が確認した能力と入力rootを利用できる。AIが管理設定・秘密を変更して補っていない。
+- [ ] 初回は過去のログ・設定を使わず、新しいProjectと今回の正常通信から必要なMacro・Rule・CPHを構成する。
+- [ ] REVIEWではユーザーが準備・実行を別々に画面承認し、全検証証拠のレビュー後にScanへ進む。
+- [ ] 設定復元と業務データ・セッションの回収を区別し、runtimeを一時ファイル整理から除外している。
+- [ ] Issueの選択範囲を確認して、HTML／XMLを出力・閲覧できる。
+
+導入完了は、この確認票と診断仕様の実通信確認で判断する。
+
+翌日以降に再開する場合は、同じ診断用プロジェクトと保存したBurp Projectを開き、必要な補助サービスを起動して第9章の接続確認から再開する。初回と違って既存履歴・設定があるため、新規Projectで置き換えたり無条件に初期化したりしない。MCP拡張の再ロード・Burp再起動後は、過去のAudit識別子やメール監視が引き続き使えると仮定しない。
