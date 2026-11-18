@@ -1,5 +1,9 @@
 # 診断ジョブ実行サービス
 
+## 認証設定の再利用
+
+authenticationRetentionで指定した認証Ruleと参照Macro・CPHを保持し、authenticationStatesで対象ごとの有効／無効を指定します。Check session is validと実行順を保持し、CPHにはcphToolsで必要なTool範囲を宣言します。準備と新Scan開始前に不足を拒否し、終了後のOptionsを元へ戻します。正確な入力形式は公開Tool Descriptionを確認してください。Scan中の下書きは保存済みの保持後baselineを参照し、正式化時に最新設定で再検証します。
+
 このモジュールはMCPに組み込まれ、`diagnosis-contract` の契約を使って設定適用、準備検証、人間承認、Scan開始、証拠保存、設定回復を実行します。通常のAI操作は公開MCP `diagnostic_job` と `diagnostic_draft` を使用します。外部のモデルAPIや別runnerプロセスを必須にしません。
 
 導入とローカルruntimeの説明は [LOAD.md](../LOAD.md) を参照してください。

@@ -2,6 +2,10 @@
 
 この手順は、Burp Professional・Claude Code・Git for Windows・Java 21以上・Jython standaloneを用意した、新しいWindows環境を対象にします。BurpとClaude Codeは同じWindows上で動かします。既設環境を初期化する手順ではありません。MCPは通常のREVIEW版だけを使います。
 
+## clone後の再現範囲
+
+配布JARとソースは通常REVIEW版の同じ機能を提供します。cloneだけでBurpへのロード、Java／Jython／MCPクライアントの準備、初回の人間承認付き能力登録、各サイトの認証状態が完了するわけではありません。この手順を順に実施してください。CPHを使う対象では拡張のLoadedをONにし、公開APIの接続だけでなく実通信で置換を確認します。開発PCのruntime・秘密・登録済み能力・診断履歴をコピーしません。
+
 ## GitHubから取得する
 
 PowerShellで、まだ存在しない作業場所を選びます。例のパスは利用するPCに合わせて変更してください。
@@ -21,6 +25,8 @@ git -C mcp-server status --short
 git -C burp-cph status --short
 Test-Path mcp-server/build/libs/burp-mcp-all.jar
 Get-FileHash mcp-server/build/libs/burp-mcp-all.jar -Algorithm SHA256
+$expectedJarHash = ((Get-Content -LiteralPath 'mcp-server/SHA256SUMS' | Where-Object { $_ -match '  build/libs/burp-mcp-all.jar$' }) -split ' ')[0]
+if ((Get-FileHash -LiteralPath 'mcp-server/build/libs/burp-mcp-all.jar' -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedJarHash) { throw '配布JARのhashが一致しません。ロードを中止してください。' }
 Copy-Item mcp-server/diagnosis/AGENTS.md,mcp-server/diagnosis/CLAUDE.md,mcp-server/diagnosis/spec.md,mcp-server/diagnosis/read.me,mcp-server/diagnosis/quicksetup.txt -Destination $setupRoot
 New-Item -ItemType Directory -Path (Join-Path $setupRoot 'temp') | Out-Null
 ```

@@ -1,5 +1,5 @@
 package net.portswigger.mcp.jobs
-import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.*
 
 import net.portswigger.diagnosis.contract.*
 import net.portswigger.diagnosis.runner.HumanApprover
@@ -8,6 +8,26 @@ import net.portswigger.diagnosis.runner.reviewProjection
 import java.nio.file.Path
 import java.util.concurrent.FutureTask
 import javax.swing.*
+
+internal fun reviewAuthenticationSummary(plan:CompiledPlan):String=buildString {
+    val selection=plan.proposal.authenticationRetention
+    if(selection!=null) {
+        appendLine("再利用のため保持する認証Rule：${selection.ruleDescriptions}")
+        appendLine("参照先Macroを自動保持。CPH：${selection.cphNames}（キャッシュ参照先も保持）")
+        appendLine("新規の保持Rule・CPHは終了時に無効化してBurpに残します。Check session is validとMacroの定義は保持します。")
+        appendLine("Target scopeの追加も保持：${selection.retainTargetScope}。一時的なresource poolは元へ戻します。")
+        appendLine("準備未完了での回復は元のbaselineへ戻します。検証完了後の回復は認証定義を保持します。")
+    } else if(plan.proposal.variants.any { variant -> variant.settings.rules.any { rule ->
+        rule.jsonObject["actions"]?.jsonArray?.any { it.jsonObject["type"]==JsonPrimitive("validate_session") }==true
+    } }) {
+        appendLine("認証定義の保持指定なし：新規Rule・Macroは復元時に取り除きます。再利用して残す場合は計画を修正してください。")
+    }
+    plan.proposal.variants.forEach { variant -> variant.settings.authenticationStates?.let { states ->
+        appendLine("${variant.id} 再利用認証Ruleの有効/無効：${states.rules}")
+        appendLine("${variant.id} 再利用CPHの有効/無効：${states.cph}")
+        appendLine("${variant.id} CPHに必要なTool範囲：${states.cphTools}（実行中のみ有効化し、終了後は元のOptionsへ戻します）")
+    } }
+}
 
 internal fun reviewRequestedInputSummary(proposal:JobProposal):String=buildString {
     val requested=proposal.requestedInputParameters
@@ -50,7 +70,7 @@ class SwingJobApprover(private val directory:Path,private val owner:()->java.awt
             val message="実行ID：${record.executionId}、Audit：${record.auditId}\n計画：${plan.planDigest}\n証拠：$evidenceRef\n"+
                 "終了・取消と関連通信の停止を照合した後、このジョブが変更した設定だけを元へ復元します。\n"+
                 "Scanの開始・再開・取消、正常再送、対象データやセッションの削除は行いません。\n"+
-                "他の操作による設定変更を検出した場合は上書きせず停止します。"
+                "他の操作による設定変更を検出した場合は上書きせず停止します。\n"+reviewAuthenticationSummary(plan)
             confirm(message,"診断ジョブの設定復元")
         }
         return await(task,"RECOVERY")
@@ -88,6 +108,34 @@ class SwingJobApprover(private val directory:Path,private val owner:()->java.awt
         }
         return await(task,"RECOVERY")
     }
+    override fun reviewStint(stintId:String,plans:List<CompiledPlan>,reports:List<ValidationReport>):String? {
+        val artifacts=ReviewArtifacts(directory)
+        val finalReview=reports.isNotEmpty()
+        val pages=plans.mapIndexed { i,p ->
+            val source=artifacts.write(jobJson.encodeToJsonElement(p),"plan")
+            ApprovalPage("${i+1}. ${p.proposal.jobId}",buildString {
+                appendLine("改訂 ${p.proposal.revision}　計画 ${p.planDigest}")
+                appendLine("設定・検証通信の原本：$source")
+                appendLine(reviewAuthenticationSummary(p))
+                p.expandedEndpoints.forEach { appendLine(it.url()) }
+                p.variants.forEach { appendLine("${it.variant.id}　分岐 ${it.variant.requiredBranches}　設定 ${it.settingsDigest}") }
+                reports.getOrNull(i)?.let {
+                    p.variants.forEach { v ->
+                        appendLine("${v.variant.id} Project設定：${artifacts.write(v.project,"project")}")
+                        appendLine("${v.variant.id} CPH設定：${artifacts.write(v.cph,"cph")}")
+                        appendLine("CPH順序：${v.cphOrder}")
+                    }
+                    appendLine("全検証証拠：${artifacts.write(jobJson.encodeToJsonElement(it),"validation")}")
+                    appendLine("検証 ${it.probes.size}件　復元 ${it.restored}　残存CPH ${it.residualCphTabs}")
+                }
+            })
+        }
+        val label=if(finalReview) "全証拠と実行順の確認（開始操作なし）" else "設定反映と検証通信の承認（有効時間1時間）"
+        return await(FutureTask {
+            if(ReviewApprovalDialog.show(owner(),"スティント $stintId",pages,
+                "$label。選択された${plans.size}件を表示順に確認してください。")) System.getProperty("user.name") else null
+        },if(finalReview) "STINT_FINAL" else "STINT_PREPARATION")
+    }
     override fun review(plan:CompiledPlan,stage:ApprovalStage,report:ValidationReport?):String? {
         val artifacts=ReviewArtifacts(directory)
         val planFile=artifacts.write(jobJson.encodeToJsonElement(plan),"plan")
@@ -101,6 +149,7 @@ class SwingJobApprover(private val directory:Path,private val owner:()->java.awt
                 appendLine("セッション確認の判断：${plan.proposal.session.validationDecision}：${plan.proposal.session.decisionReason}")
                 appendLine(reviewRequestedInputSummary(plan.proposal))
                 appendLine("後処理：${plan.proposal.cleanupPolicy}")
+                appendLine(reviewAuthenticationSummary(plan))
                 appendLine("承認の有効時間：${if(stage==ApprovalStage.EXECUTION) plan.proposal.executionApprovalMaxAgeSeconds else 3600L}秒。取消し・設定や入力の変更・検証の鮮度による停止条件は維持します。")
                 if(plan.variants.any { it.variant.settings.serialScannerRequests })
                     appendLine("逐次実行：Default resource poolの同時実行数を一時的に1へ変更し、各段階の終了後に元へ戻します。共有する別Taskが動作中でないことを確認してください。")

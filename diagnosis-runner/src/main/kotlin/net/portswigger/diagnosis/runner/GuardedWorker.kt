@@ -28,6 +28,8 @@ fun interface HumanApprover {
     fun reviewInstallation(message:String):String? = null
     /** Only a trusted UI implementation may approve; never take an approved flag from job JSON. */
     fun review(plan: CompiledPlan, stage: ApprovalStage, report: ValidationReport?): String?
+    /** Trusted human decision over an ordered, immutable list. The final review only records evidence. */
+    fun reviewStint(stintId:String, plans:List<CompiledPlan>, reports:List<ValidationReport>):String? = null
     fun reviewRecovery(plan:CompiledPlan,record:ExecutionRecord,evidenceRef:String):String? = review(plan,ApprovalStage.RECOVERY,null)
     fun reviewRestore(plan:CompiledPlan,record:ExecutionRecord,evidenceRef:String):String? = reviewRecovery(plan,record,evidenceRef)
     fun reviewContinuation(plan:CompiledPlan,record:ExecutionRecord,report:ValidationReport):String? = review(plan,ApprovalStage.EXECUTION,report)
@@ -64,7 +66,7 @@ class GuardedWorker(private val port: BurpExecutionPort, private val store: JobS
 
     /** Referenced baselines never inspect or modify the running Burp. Idle capture is read-only. */
     fun draftBaseline(sourceExecutionId: String?): BurpSnapshot {
-        if(sourceExecutionId != null) return plan(sourceExecutionId).baseline
+        if(sourceExecutionId != null) return plan(sourceExecutionId).let { it.restorationBaseline ?: it.baseline }
         requireJob(store.get("active")?.jsonPrimitive?.contentOrNull == null, "DRAFT_BASELINE_EXECUTION_REQUIRED")
         return idleDraftBaseline()
     }
@@ -108,9 +110,11 @@ class GuardedWorker(private val port: BurpExecutionPort, private val store: JobS
     }
 
     @Synchronized fun approve(id: String, stage: ApprovalStage): ApprovalRecord {
+        requireJob(store.get("hw-member:$id")==null,"STINT_REVIEW_REQUIRED")
         requireJob(stage!=ApprovalStage.RECOVERY,"USE_RECONCILIATION")
         val r = live(id); val p = plan(id)
         InputCoverage.validateRequestedScope(p.proposal)
+        validateAuthenticationToolScopes(p)
         val report = if(stage==ApprovalStage.EXECUTION) read<ValidationReport>("validation:$id") else null
         requireJob(if(stage==ApprovalStage.PREPARATION) r.state=="STATIC_VALIDATED" else r.state=="VALIDATED","INVALID_APPROVAL_STAGE")
         if(report!=null) {
@@ -132,6 +136,55 @@ class GuardedWorker(private val port: BurpExecutionPort, private val store: JobS
             write(r.copy(state=if(stage==ApprovalStage.PREPARATION) "PREPARATION_APPROVED" else "EXECUTION_APPROVED"))
         }
         return a
+    }
+    @Synchronized fun reviewStint(stintId:String, ids:List<String>, finalReview:Boolean, manifestDigest:String,reviewDigest:String):JsonObject {
+        requireJob(ids.isNotEmpty() && ids.distinct().size==ids.size,"INVALID_STINT_SELECTION")
+        val plans=ids.map(::plan)
+        val reports=if(finalReview) ids.map(::validation) else emptyList()
+        fun verify() {
+            requireJob(contextStatus()["ownerExecutionId"]==JsonNull,"BURP_CONTEXT_BUSY")
+            val baseline=port.snapshot()
+            ids.forEachIndexed { index,id ->
+                val p=plans[index]
+                val r=live(id)
+                requireJob(r.planDigest==p.planDigest && r.state==(if(finalReview) "VALIDATED" else "STATIC_VALIDATED"),"INVALID_APPROVAL_STAGE")
+                InputCoverage.validateRequestedScope(p.proposal)
+                validateAuthenticationToolScopes(p)
+                port.verifyInputs(p.proposal)
+                checkSnapshot(if(finalReview) read("prepared-baseline:$id") else p.baseline,baseline,p)
+                if(finalReview) {
+                    val report=reports[index]
+                    requireJob(report==validation(id) && report.restored && report.planDigest==p.planDigest &&
+                        now()-report.completedAt in 0..p.proposal.validationMaxAgeSeconds,"VALIDATION_EXPIRED_OR_CHANGED")
+                    checkOncePreparation(p,report)
+                    p.variants.forEach { v -> v.variant.requiredBranches.forEach { branch ->
+                        requireJob(report.probes.count { it.variantId==v.variant.id && it.branch==branch && it.settingsDigest==v.settingsDigest }>=5,"FIVE_PROBES_REQUIRED")
+                    } }
+                }
+            }
+        }
+        verify()
+        val who=approver.reviewStint(stintId,plans,reports)
+        requireJob(!who.isNullOrBlank(),"HUMAN_DENIED")
+        verify()
+        val at=now()
+        val receipt=buildJsonObject {
+            put("manifestDigest",manifestDigest);put("reviewDigest",reviewDigest);put("approver",who);put("approvedAt",at)
+            put("stage",if(finalReview) "FINAL_REVIEW" else "PREPARATION")
+            put("items",buildJsonArray { ids.forEachIndexed { i,id -> add(buildJsonObject {
+                put("executionId",id);put("planDigest",plans[i].planDigest)
+                if(finalReview) put("validationDigest",fingerprint(reports[i]))
+            }) } })
+        }
+        store.transaction {
+            if(!finalReview) ids.forEachIndexed { i,id ->
+                save("approval:$id:PREPARATION",ApprovalRecord(UUID.randomUUID().toString(),id,plans[i].planDigest,
+                    ApprovalStage.PREPARATION,at,at+3600,who!!))
+                write(record(id).copy(state="PREPARATION_APPROVED"))
+            }
+            store.put("hw-review:$reviewDigest",receipt)
+        }
+        return receipt
     }
     private fun live(id: String): ExecutionRecord = record(id).also {
         requireJob(it.epoch==epoch,"WORKER_EPOCH_CHANGED_RECONCILIATION_REQUIRED")
@@ -234,8 +287,9 @@ class GuardedWorker(private val port: BurpExecutionPort, private val store: JobS
         permitted(id,stage)
         store.onceJson("$id:$operation",p.planDigest) {
             permitted(id,stage)
-            port.restore(p.baseline,p.variants.flatMap { it.variant.settings.cph.keys }.toSet())
-            val actual=port.snapshot(); checkSnapshot(p.baseline,actual,p)
+            val target=p.restorationBaseline ?: p.baseline
+            port.restore(target,p.variants.flatMap { it.variant.settings.cph.keys }.toSet())
+            val actual=port.snapshot(); checkSnapshot(target,actual,p)
             jobJson.encodeToJsonElement(actual)
         }
         return port.snapshot()
@@ -250,6 +304,7 @@ class GuardedWorker(private val port: BurpExecutionPort, private val store: JobS
     @Synchronized fun prepare(id:String): ValidationReport {
         val r=live(id); val p=plan(id)
         InputCoverage.validateRequestedScope(p.proposal)
+        validateAuthenticationToolScopes(p)
         if(r.state=="VALIDATED") return read("validation:$id")
         requireJob(r.state=="PREPARATION_APPROVED","INVALID_STATE")
         permitted(id,ApprovalStage.PREPARATION)
@@ -311,6 +366,7 @@ class GuardedWorker(private val port: BurpExecutionPort, private val store: JobS
         if(r.state=="RUNNING") return r
         requireJob(r.state=="EXECUTION_APPROVED","INVALID_STATE")
         InputCoverage.validateRequestedScope(p.proposal)
+        validateAuthenticationToolScopes(p)
         permitted(id,ApprovalStage.EXECUTION)
         val report=read<ValidationReport>("validation:$id")
         requireJob(now()-report.completedAt in 0..p.proposal.validationMaxAgeSeconds,"VALIDATION_EXPIRED")
@@ -470,7 +526,7 @@ class GuardedWorker(private val port: BurpExecutionPort, private val store: JobS
         val who=approver.reviewRestore(p,r,evidenceRef) ?: throw JobRejected("HUMAN_DENIED")
         requireJob(who.isNotBlank(),"APPROVER_REQUIRED")
         stopped();val before=port.snapshot();checkRecoveryOwnership(p,before)
-        val baseline=p.baseline.copy(instanceId=before.instanceId)
+        val baseline=recoveryBaseline(id,p).copy(instanceId=before.instanceId)
         val alreadyRestored=runCatching { checkSnapshot(baseline,before,p);true }.getOrDefault(false)
         try {
             if(!alreadyRestored) store.onceJson("$id:recover-settings",p.planDigest) {
@@ -499,7 +555,7 @@ class GuardedWorker(private val port: BurpExecutionPort, private val store: JobS
         requireJob(r.state !in setOf("EXECUTION_FINISHED","FAILED_RECONCILED","RETIRED_UNVERIFIED"),"ALREADY_TERMINAL")
         val human=approver.reviewRecovery(p,r,evidenceRef) ?: throw JobRejected("HUMAN_DENIED")
         val actual=port.snapshot()
-        checkSnapshot(p.baseline.copy(instanceId=actual.instanceId),actual,p)
+        checkSnapshot(recoveryBaseline(id,p).copy(instanceId=actual.instanceId),actual,p)
         store.put("reconciliation:$id",buildJsonObject { put("operator",human);put("evidenceRef",evidenceRef);put("confirmedAt",now());put("previous",jobJson.encodeToJsonElement(r)) })
         val active=store.get("active")?.jsonPrimitive?.contentOrNull
         requireJob(active==null || active==id,"ANOTHER_EXECUTION_OWNS_CONTEXT")
@@ -509,6 +565,9 @@ class GuardedWorker(private val port: BurpExecutionPort, private val store: JobS
         return next
     }
 
+    // A failed/incomplete preparation never promotes authentication definitions into reusable settings.
+    private fun recoveryBaseline(id:String,p:CompiledPlan):BurpSnapshot =
+        if(store.get("validation:$id")!=null) p.restorationBaseline ?: p.baseline else p.baseline
     /** Maintenance only. Preserves unknown old outcomes; NEVER restores settings or declares termination. */
     @Synchronized fun retire(id:String,evidenceRef:String):ExecutionRecord {
         val r=record(id);val p=plan(id)

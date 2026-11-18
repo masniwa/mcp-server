@@ -1,4 +1,10 @@
-# Burp MCP Server -re 1.4.17
+# Burp MCP Server -re 1.4.19
+
+## 1.4.19：再利用する認証設定
+
+再利用する認証Session Handling Ruleと、そのCheck session is valid・参照Macro・CPHをBurp上に保持できます。待機時は新規Rule・CPHを無効にし、AIが対象ごとに必要性を判断して有効／無効を指定します。保持によってRuleの元の実行順は変えません。CPHの再利用ではcphToolsで必要な通信起点を宣言し、Scanner／ExtenderなどのOptionsを実行中だけ有効にします。指定漏れは準備・新Scan開始前に拒否し、終了時は元のOptionsへ戻します。
+
+この配布は通常の人間承認付きREVIEW版です。別PCでは[INSTALL-WINDOWS.md](INSTALL-WINDOWS.md)に従い、Burp Professional、Java 21以上、Jython、MCPクライアントと初回能力検証を準備してください。機能とビルド済みJARを取得できますが、ログイン状態・資格情報・Project・能力登録は各PCで用意します。
 
 新しいWindows PCからの導入は [INSTALL-WINDOWS.md](INSTALL-WINDOWS.md) を使用してください。GitHubからの取得、Claude Code接続、空の能力一覧からの人間承認付き通常／動的検証、証拠付き登録、設定復元までを説明しています。診断用の独立した4文書は[diagnosis/read.me](diagnosis/read.me)に同梱しています。
 
@@ -7,6 +13,10 @@ Burp SuiteとAIクライアントをMCPで接続し、診断用Macro・Session H
 ## 配布物
 
 ビルド済みの拡張JARを [build/libs/burp-mcp-all.jar](build/libs/burp-mcp-all.jar) に含めています。Java 21を使用してください。対応する [CPH v0.3](https://github.com/masniwa/burp-cph) と組み合わせて管理APIを利用します。自動テストと実機検証の区別は[testing.md](testing.md)を参照してください。
+
+clone後にこの配布JARを直接ロードできます。自分で再ビルドする必要はありません。[SHA256SUMS](SHA256SUMS)で配布JARと同梱proxyの一致を確認できます。
+
+1.4.19の同梱JARは、この版の確認時にロードした原本と同一です。SHA-256は `5fd13d6b5e59358a62a918d0b746555a7a5465d7f3a9f785a168fa2eb694a5ab` です。
 
 ```text
 installation/

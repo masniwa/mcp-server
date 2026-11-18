@@ -17,17 +17,18 @@ class ToolDispatch(val managed: Boolean) {
     fun workerHttp1(args:JsonObject):String = (http1Response ?: error("Worker HTTP sender not registered"))(args)
     fun register(name:String, handler:(JsonObject)->List<ContentBlock>) { handlers[name]=handler }
     fun publicDescription(name:String,description:String):String =
-        if(managed && name !in READ_TOOLS && name!="diagnostic_job")
+        if(managed && name !in READ_TOOLS && name !in MANAGED_TOOLS)
             "MANAGED MODE: direct calls to this mutation tool are disabled (MANAGED_MODE_JOB_REQUIRED). Use diagnostic_job with a validated plan for configuration, import, sending, scan execution and stopped-job recovery. The following describes the legacy handler only.\n\n$description"
         else description
     fun publicCall(name:String, arguments:JsonObject):List<ContentBlock> {
-        requireJob(!managed || name in READ_TOOLS || name=="diagnostic_job","MANAGED_MODE_JOB_REQUIRED")
+        requireJob(!managed || name in READ_TOOLS || name in MANAGED_TOOLS,"MANAGED_MODE_JOB_REQUIRED")
         return workerCall(name,arguments)
     }
     /** Only the authenticated worker adapter calls this; it is never exposed as an MCP tool. */
     fun workerCall(name:String,arguments:JsonObject):List<ContentBlock> =
         (handlers[name] ?: error("Unsupported worker tool"))(arguments)
     companion object {
+        private val MANAGED_TOOLS=setOf("diagnostic_job","diagnostic_stint")
         val READ_TOOLS=setOf("output_project_options","output_user_options","get_cph_config","get_macros","get_macro_detail",
             "get_session_handling_rules","get_active_scan_status","get_payload_scan_results","plan_payload_scan",
             "get_scanner_issues","get_proxy_http_history","get_proxy_http_history_regex","get_proxy_http_request_by_id",

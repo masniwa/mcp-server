@@ -67,12 +67,18 @@ fun endpoint(url: String): Endpoint {
 @Serializable data class LiteralSubstitution(val before:String,val after:String)
 @Serializable data class MacroPreparation(val macroSerialNumber:Long,val itemIndex:Int,val sourceId:String,
     val sourceRequestSha256:String,val substitutions:List<LiteralSubstitution> = emptyList(),val cphTrigger:String? = null)
+@Serializable data class AuthenticationRetention(val ruleDescriptions:List<String>,val cphNames:List<String> = emptyList(),
+    val retainTargetScope:Boolean = false)
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable data class AuthenticationStates(val rules:Map<String,Boolean> = emptyMap(),val cph:Map<String,Boolean> = emptyMap(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val cphTools:List<String> = emptyList())
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class SettingsPlan(val macros: JsonArray = JsonArray(emptyList()), val rules: JsonArray = JsonArray(emptyList()),
     val cph: JsonObject = JsonObject(emptyMap()), val cphOrder: List<String> = emptyList(),
     val targetScope: JsonObject? = null,val macroPreparations:List<MacroPreparation> = emptyList(),
     // Omit the default so persisted pre-existing proposals retain their canonical digest.
-    @EncodeDefault(EncodeDefault.Mode.NEVER) val serialScannerRequests:Boolean = false)
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val serialScannerRequests:Boolean = false,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val authenticationStates:AuthenticationStates? = null)
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class ScanVariant(val id: String, val kind: String, val verificationSourceId: String? = null,
     val request: RequestPlan, val settings: SettingsPlan, val requiredBranches: List<String> = listOf("normal"),
@@ -90,13 +96,16 @@ fun endpoint(url: String): Endpoint {
     // Explicitly reviewed duration; omission preserves existing plan digests and the one-hour default.
     @EncodeDefault(EncodeDefault.Mode.NEVER) val executionApprovalMaxAgeSeconds:Long = 3600,
     // Independent requested scope: an exclusion explanation cannot remove requested inputs.
-    @EncodeDefault(EncodeDefault.Mode.NEVER) val requestedInputParameters:List<InputParameter> = emptyList())
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val requestedInputParameters:List<InputParameter> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val authenticationRetention:AuthenticationRetention? = null)
 @Serializable data class BurpSnapshot(val instanceId: String, val project: JsonObject, val cph: JsonObject,
     val cphOrder: List<String>, val capabilities: Set<String>, val adapterVersion: String = "jobs-v1")
 @Serializable data class CompiledVariant(val variant: ScanVariant, val project: JsonObject, val cph: JsonObject,
     val cphOrder: List<String>, val settingsDigest: String)
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class CompiledPlan(val proposal: JobProposal, val proposalDigest: String, val planDigest: String,
-    val baseline: BurpSnapshot, val variants: List<CompiledVariant>, val expandedEndpoints: List<Endpoint>)
+    val baseline: BurpSnapshot, val variants: List<CompiledVariant>, val expandedEndpoints: List<Endpoint>,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val restorationBaseline:BurpSnapshot? = null)
 @Serializable enum class ApprovalStage { PREPARATION, EXECUTION, RECOVERY }
 @Serializable data class ApprovalRecord(val id: String, val executionId: String, val planDigest: String,
     val stage: ApprovalStage, val approvedAt: Long, val expiresAt: Long, val approver: String,

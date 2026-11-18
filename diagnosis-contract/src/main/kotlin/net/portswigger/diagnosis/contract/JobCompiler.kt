@@ -4,10 +4,29 @@ import kotlinx.serialization.json.*
 
 /** Pure compiler: no sockets, Burp, filesystem or AI inference. Native JSON is preserved losslessly. */
 class JobCompiler {
-    fun compile(job:JobProposal,baseline:BurpSnapshot):CompiledPlan = try { compileValidated(job,baseline) }
+    fun compile(job:JobProposal,baseline:BurpSnapshot):CompiledPlan = try {
+        val initial=compileValidated(job,baseline)
+        if(job.authenticationRetention==null) initial else {
+            val retained=authenticationRestoration(initial)
+            // Retained definitions are idle/disabled. Compile each variant's approved enabled
+            // states against them, including inherited dependencies and input preservation.
+            val executable=compileValidated(withoutRetainedDefinitions(job,retained,initial.variants),retained,
+                initial.variants.map { nativeRules(it.project) })
+            val variants=executable.variants.mapIndexed { index,v -> v.copy(variant=job.variants[index]) }
+            val seed=buildJsonObject {
+                put("proposal",initial.proposalDigest);put("baseline",fingerprint(baseline))
+                put("variants",jobJson.encodeToJsonElement(variants));put("restorationBaseline",fingerprint(retained))
+            }
+            CompiledPlan(job,initial.proposalDigest,fingerprint(seed),baseline,variants,executable.expandedEndpoints,retained)
+        }
+    }
     catch(e:JobRejected) { throw e }
     catch(e:Exception) { throw JobRejected("INVALID_NATIVE_SETTINGS") }
-    private fun compileValidated(job: JobProposal, baseline: BurpSnapshot): CompiledPlan {
+    private fun nativeRules(project:JsonObject):List<JsonElement> =
+        (project["project_options"]?.jsonObject ?: project)["sessions"]?.jsonObject
+            ?.get("session_handling_rules")?.jsonObject?.get("rules")?.jsonArray.orEmpty()
+    private fun compileValidated(job: JobProposal, baseline: BurpSnapshot,
+        originalRuleOrder:List<List<JsonElement>>? = null): CompiledPlan {
         requireJob(job.schemaVersion == 1 && job.jobId.matches(Regex("[A-Za-z0-9_-]{1,80}")) && job.revision > 0, "INVALID_JOB_VERSION")
         requireJob(job.objective.isNotBlank() && job.cleanupPolicy.isNotBlank(), "MISSING_PURPOSE_OR_CLEANUP")
         requireJob(job.targetPolicy.isNotEmpty() && job.validationMaxAgeSeconds in 1..86400, "INVALID_POLICY")
@@ -42,7 +61,7 @@ class JobCompiler {
         requireJob(job.storedVerificationSourceIds.distinct().size == job.storedVerificationSourceIds.size &&
             job.storedVerificationSourceIds.all { it in materials } &&
             job.variants.filter { it.kind == "STORED" }.mapNotNull { it.verificationSourceId }.sorted() == job.storedVerificationSourceIds.sorted(), "STORED_COVERAGE_MISMATCH")
-        val compiled = job.variants.map { v ->
+        val compiled = job.variants.mapIndexed { variantIndex,v ->
             requireJob(v.kind in setOf("REFLECTION", "STORED") && v.id.matches(Regex("[A-Za-z0-9_-]{1,80}")), "INVALID_VARIANT")
             requireJob(v.requiredBranches.isNotEmpty() && v.requiredBranches.distinct().size == v.requiredBranches.size, "INVALID_BRANCHES")
             val source = materials[v.request.sourceId] ?: throw JobRejected("SOURCE_NOT_OBSERVED")
@@ -72,7 +91,18 @@ class JobCompiler {
             val projectRoot = baseline.project["project_options"]?.jsonObject ?: baseline.project
             val sessions = projectRoot["sessions"]?.jsonObject ?: JsonObject(emptyMap())
             val existingMacros = sessions["macros"]?.jsonObject?.get("macros")?.jsonArray ?: JsonArray(emptyList())
-            val existingRules = sessions["session_handling_rules"]?.jsonObject?.get("rules")?.jsonArray ?: JsonArray(emptyList())
+            val originalRules = sessions["session_handling_rules"]?.jsonObject?.get("rules")?.jsonArray ?: JsonArray(emptyList())
+            val ruleStates=s.authenticationStates?.rules.orEmpty()
+            requireJob(ruleStates.keys.all { name -> originalRules.count { it.jsonObject["description"]==JsonPrimitive(name) }==1 },
+                "AUTHENTICATION_RULE_STATE_REFERENCE_REQUIRED")
+            val existingRules=JsonArray(originalRules.map { value ->
+                val rule=value.jsonObject;val name=rule["description"]?.jsonPrimitive?.content
+                if(name in ruleStates) {
+                    requireJob(rule["actions"]?.jsonArray?.any { it.jsonObject["type"]==JsonPrimitive("validate_session") }==true,
+                        "AUTHENTICATION_RULE_VALIDATION_REQUIRED")
+                    JsonObject(rule+("enabled" to JsonPrimitive(ruleStates.getValue(name!!))))
+                } else value
+            })
             s.macroPreparations.forEach { preparation ->
                 val macro=(existingMacros+s.macros).firstOrNull { it.jsonObject["serial_number"]?.jsonPrimitive?.longOrNull==preparation.macroSerialNumber }?.jsonObject
                 val items=macro?.get("items")?.jsonArray
@@ -125,7 +155,16 @@ class JobCompiler {
                 requireJob(actions.all { it.jsonObject["type"]?.jsonPrimitive?.content in setOf("run_macro","run_post_request_macro","validate_session","invoke_extension") },"UNSUPPORTED_RULE_ACTION")
                 r["include_in_scope"]?.jsonArray?.forEach { allowed(endpoint(it.jsonObject["prefix"]!!.jsonPrimitive.content)) }
             }
-            val applicableRules=(existingRules+s.rules).map { it.jsonObject }.filter { InputCoverage.ruleMayApply(it,v.request.endpoint) }
+            val mergedRules=(existingRules+s.rules).toMutableList()
+            val orderedRules=originalRuleOrder?.get(variantIndex)?.map { original ->
+                val at=mergedRules.indexOf(original)
+                requireJob(at>=0,"RETAINED_RULE_ORDER_MISMATCH")
+                mergedRules.removeAt(at)
+            }?.let { ordered ->
+                requireJob(mergedRules.all { it.jsonObject["enabled"]==JsonPrimitive(false) },"RETAINED_EXTRA_RULE_ENABLED")
+                ordered+mergedRules
+            } ?: mergedRules
+            val applicableRules=orderedRules.map { it.jsonObject }.filter { InputCoverage.ruleMayApply(it,v.request.endpoint) }
             val actions=applicableRules.flatMap { rule -> rule["actions"]?.jsonArray.orEmpty() }.map { it.jsonObject }
                 .filter { it["enabled"]?.jsonPrimitive?.booleanOrNull!=false }
             applicableRules.forEach(::inspectReferences)
@@ -177,7 +216,12 @@ class JobCompiler {
             }
             requireJob(s.cphOrder.distinct().size == s.cphOrder.size && s.cphOrder.containsAll(s.cph.keys) &&
                 s.cphOrder.all { it in s.cph || it in baseline.cph }, "CPH_ORDER_REQUIRED")
-            val cph=JsonObject(baseline.cph+s.cph)
+            val cphStates=s.authenticationStates?.cph.orEmpty()
+            requireJob(cphStates.keys.all { it in baseline.cph && it!=digest("options") && it !in s.cph },
+                "AUTHENTICATION_CPH_STATE_REFERENCE_REQUIRED")
+            val cph=applyAuthenticationToolScope(s.authenticationStates,JsonObject((baseline.cph+s.cph).mapValues { (name,value) ->
+                if(name in cphStates) JsonObject(value.jsonObject+("enabled" to JsonPrimitive(cphStates.getValue(name)))) else value
+            }))
             val requestedOrder=s.cphOrder+baseline.cphOrder.filter { it !in s.cphOrder }
             // Native export always places shared Options last; only actual handler tabs have processing order.
             val optionsKey=digest("options")
@@ -225,7 +269,7 @@ class JobCompiler {
             }
             val newSessions = JsonObject(sessions + mapOf(
                 "macros" to JsonObject((sessions["macros"]?.jsonObject ?: JsonObject(emptyMap())) + ("macros" to JsonArray(existingMacros + s.macros))),
-                "session_handling_rules" to JsonObject((sessions["session_handling_rules"]?.jsonObject ?: JsonObject(emptyMap())) + ("rules" to JsonArray(existingRules + s.rules)))
+                "session_handling_rules" to JsonObject((sessions["session_handling_rules"]?.jsonObject ?: JsonObject(emptyMap())) + ("rules" to JsonArray(orderedRules)))
             ))
             var newRoot = JsonObject(projectRoot + ("sessions" to newSessions))
             if(s.serialScannerRequests) {

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "jobId": "mock-example",
+  "revision": 1,
+  "objective": "Synthetic fixture for mock tests only",
+  "targetPolicy": [
+    {
+      "endpoint": {
+        "scheme": "http",
+        "host": "fixture.invalid",
+        "port": 8080,
+        "path": "/items"
+      },
+      "pathPrefix": false
+    }
+  ],
+  "materials": [
+    {
+      "id": "observed",
+      "endpoint": {
+        "scheme": "http",
+        "host": "fixture.invalid",
+        "port": 8080,
+        "path": "/items"
+      },
+      "request": "POST /items HTTP/1.1\r\nHost: fixture.invalid:8080\r\nContent-Length: 11\r\n\r\nname=normal",
+      "response": "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK",
+      "requestSha256": "b355d1fd427cb550991be9f6f702e230e557eb64ee83ec620f3c1a2e9fc1460f",
+      "responseSha256": "3a276ae58952a3953a2871eb64e8f585b30c7b4732835c5a6d61422691f492b2"
+    }
+  ],
+  "session": {
+    "authenticationRequired": false,
+    "validationDecision": "OMIT",
+    "decisionReason": "Synthetic unauthenticated mock fixture",
+    "accountRef": "mock-account"
+  },
+  "variants": [
+    {
+      "id": "reflection",
+      "kind": "REFLECTION",
+      "request": {
+        "endpoint": {
+          "scheme": "http",
+          "host": "fixture.invalid",
+          "port": 8080,
+          "path": "/items"
+        },
+        "request": "POST /items HTTP/1.1\r\nHost: fixture.invalid:8080\r\nContent-Length: 11\r\n\r\nname=normal",
+        "sourceId": "observed",
+        "sourceRequestSha256": "b355d1fd427cb550991be9f6f702e230e557eb64ee83ec620f3c1a2e9fc1460f"
+      },
+      "settings": {}
+    }
+  ],
+  "requiredCapabilities": [
+    "SCANNER_WORKFLOW",
+    "EXCLUSIVE_CONTEXT"
+  ],
+  "cleanupPolicy": "No real data is created in mock tests",
+  "limitations": [
+    "Synthetic input; not an authorization for real target traffic"
+  ]
+}

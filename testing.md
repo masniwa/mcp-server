@@ -1,5 +1,17 @@
 # 配布版の検証範囲
 
+## 1.4.19の認証設定保持・切替
+
+認証Ruleの保持、検証・回復Macroの整数参照、CPHキャッシュ依存と順序、待機時の無効化、対象別の有効化、元のRule順序、必要なcphToolsの宣言とOptions反映・復元を回帰します。宣言漏れ・不正Tool名・必要Toolが無効な保存planは送信前に拒否し、旧wire形式の読取り・回復を維持します。
+
+契約とworkerの回帰テスト、および公開SSEのAuthenticationRetentionMcpWorkflowTestを同梱します。後者は実際のMCPプロトコルとproduction workerを模擬Burp senderへ接続し、承認前の送信0件、必要分岐の検証、各probe/start前のScanner／Extenderフラグ、終了後のOptions復元、同一操作の二重開始防止と次対象での再利用を確認します。実Burpの認証や置換を実証する試験ではありません。配布前に、開発runtimeを含まない配布checkoutで既存WrapperのtestとembedProxyJarを実行します。
+
+別PCでは下記の初回導入検証を別途行います。開発PCの認証情報・登録済み能力・診断証拠を配布物へコピーしません。
+
+配布checkoutで172件（MCP13・契約77・runner82、failure/error/skip=0）とtest／embedProxyJarが成功しました。回帰で参照する架空のJSON例も同梱しています。JARを含む送信候補と入れ子proxyを走査し、開発PCのruntime資格情報・個人パス・実診断先・診断データの混入がないことを確認しました。ビルド済み1.4.19 REVIEW JARとSHA256SUMSを同梱し、CPH v0.3の相対参照が新規配置のmcp-server/runtimeへ解決することを確認しています。この配布検証で別PCのBurp実機を操作したわけではありません。初回能力検証は導入先で行います。
+
+公開productionソースは原本JARのソース一式と改行を除いて一致し、再ビルドJARとロード確認済み原本の全エントリーを比較してmanifestのビルド日時等以外が同一であることを確認しました。同梱するバイナリ自体は原本JARをそのまま使用し、元のmanifestのBuilt-Byを含むビルドメタデータも保持しています。SHA-256は `5fd13d6b5e59358a62a918d0b746555a7a5465d7f3a9f785a168fa2eb694a5ab` です。ソースから再ビルドした場合はmanifestの日時等によりhashが変わるため、cloneした同梱JARの一致確認にはSHA256SUMSを使用してください。
+
 新規導入・実機検証の手順は[INSTALL-WINDOWS.md](INSTALL-WINDOWS.md)に集約します。本書はテストの意味と未確認範囲を定義します。
 
 ```powershell

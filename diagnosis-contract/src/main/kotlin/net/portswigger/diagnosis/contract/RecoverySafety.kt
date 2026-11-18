@@ -8,8 +8,11 @@ fun checkRecoveryOwnership(plan:CompiledPlan,actual:BurpSnapshot) {
     requireJob(actual.adapterVersion==base.adapterVersion && actual.capabilities.containsAll(plan.proposal.requiredCapabilities),"RECOVERY_CONTEXT_CHANGED")
     val owned=(plan.variants.flatMap { it.variant.settings.cph.keys }+base.cph.keys.filter { it.startsWith(ns) }).filter { it.startsWith(ns) }.toSet()
     val baseDefs=cphDefinitions(base.cph);val currentDefs=cphDefinitions(actual.cph)
-    requireJob(currentDefs.keys.all { it in baseDefs || it in owned },"UNOWNED_CPH_TAB_DURING_RECOVERY")
-    requireJob(baseDefs.filterKeys { it !in owned && it!=options }.all { (k,v) -> currentDefs[k]==v },"UNRELATED_CPH_CHANGED")
+    requireJob(currentDefs.keys.all { it in baseDefs || it in owned || it==options && plan.variants.any { v -> options in v.cph } },"UNOWNED_CPH_TAB_DURING_RECOVERY")
+    val switchedCph=plan.proposal.variants.flatMap { it.settings.authenticationStates?.cph.orEmpty().keys }.toSet()
+    requireJob(baseDefs.filterKeys { it !in owned && it!=options }.all { (k,v) -> currentDefs[k]==v ||
+        k in switchedCph && plan.variants.any { cphDefinitions(it.cph)[k]==currentDefs[k] }
+    },"UNRELATED_CPH_CHANGED")
     requireJob(currentDefs[options]==baseDefs[options] || plan.variants.any { cphDefinitions(it.cph)[options]==currentDefs[options] },"UNRELATED_CPH_OPTIONS_CHANGED")
     requireJob(actual.cphOrder.filter { it !in owned && it!=options }==base.cphOrder.filter { it !in owned && it!=options },"UNRELATED_CPH_ORDER_CHANGED")
 
@@ -22,10 +25,20 @@ fun checkRecoveryOwnership(plan:CompiledPlan,actual:BurpSnapshot) {
     for((container,key) in listOf("macros" to "macros","session_handling_rules" to "rules")) {
         val before=originalSessions[container] as? JsonObject
         val now=currentSessions[container] as? JsonObject
-        fun unowned(o:JsonObject?)=(o?.get(key) as? JsonArray).orEmpty().filterNot {
+        val switchedRules=plan.proposal.variants.flatMap { it.settings.authenticationStates?.rules.orEmpty().keys }.toSet()
+        fun unowned(o:JsonObject?,normalize:Boolean=false)=(o?.get(key) as? JsonArray).orEmpty().filterNot {
             it.jsonObject["description"]?.jsonPrimitive?.contentOrNull?.startsWith(ns)==true
+        }.map { definition ->
+            val name=definition.jsonObject["description"]?.jsonPrimitive?.contentOrNull
+            if(normalize && container=="session_handling_rules" && name in switchedRules) {
+                val original=before?.get(key)?.jsonArray?.singleOrNull { it.jsonObject["description"]==JsonPrimitive(name) }
+                requireJob(original==definition || plan.variants.any { variant ->
+                    root(variant.project)["sessions"]?.jsonObject?.get(container)?.jsonObject?.get(key)?.jsonArray?.contains(definition)==true
+                },"UNRELATED_PROJECT_DEFINITION_CHANGED")
+                original ?: throw JobRejected("UNRELATED_PROJECT_DEFINITION_CHANGED")
+            } else definition
         }
-        requireJob(unowned(before)==unowned(now),"UNRELATED_PROJECT_DEFINITION_CHANGED")
+        requireJob(unowned(before)==unowned(now,true),"UNRELATED_PROJECT_DEFINITION_CHANGED")
         val originalMetadata:Map<String,JsonElement> = before?.filterKeys { it!=key } ?: emptyMap()
         val currentMetadata:Map<String,JsonElement> = now?.filterKeys { it!=key } ?: emptyMap()
         requireJob(originalMetadata==currentMetadata,"UNRELATED_PROJECT_DEFINITION_CHANGED")
@@ -45,7 +58,8 @@ fun checkRecoveryOwnership(plan:CompiledPlan,actual:BurpSnapshot) {
         requireJob(current["target"]==baseline["target"] || approved.any { it["target"]==current["target"] },"UNRELATED_TARGET_SETTINGS_CHANGED")
         return JsonObject(if("target" in baseline) current+("target" to baseline.getValue("target")) else current-"target")
     }
-    candidate=replaceRoot(candidate,restoreTarget(root(candidate),baseRoot,plan.variants.map { root(it.project) }))
-    if("project_options" in candidate) candidate=restoreTarget(candidate,base.project,plan.variants.map { it.project })
+    val approvedProjects=plan.variants.map { it.project }+listOfNotNull(plan.restorationBaseline?.project)
+    candidate=replaceRoot(candidate,restoreTarget(root(candidate),baseRoot,approvedProjects.map(::root)))
+    if("project_options" in candidate) candidate=restoreTarget(candidate,base.project,approvedProjects)
     requireJob(canonical(projectDefinitions(candidate))==canonical(projectDefinitions(base.project)),"UNRELATED_PROJECT_SETTINGS_CHANGED")
 }
