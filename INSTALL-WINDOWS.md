@@ -2,10 +2,6 @@
 
 この手順は、Burp Professional・Claude Code・Git for Windows・Java 21以上・Jython standaloneを用意した、新しいWindows環境を対象にします。BurpとClaude Codeは同じWindows上で動かします。既設環境を初期化する手順ではありません。MCPは通常のREVIEW版だけを使います。
 
-## clone後の再現範囲
-
-配布JARとソースは通常REVIEW版の同じ機能を提供します。cloneだけでBurpへのロード、Java／Jython／MCPクライアントの準備、初回の人間承認付き能力登録、各サイトの認証状態が完了するわけではありません。この手順を順に実施してください。CPHを使う対象では拡張のLoadedをONにし、公開APIの接続だけでなく実通信で置換を確認します。開発PCのruntime・秘密・登録済み能力・診断履歴をコピーしません。
-
 ## GitHubから取得する
 
 PowerShellで、まだ存在しない作業場所を選びます。例のパスは利用するPCに合わせて変更してください。
@@ -25,13 +21,36 @@ git -C mcp-server status --short
 git -C burp-cph status --short
 Test-Path mcp-server/build/libs/burp-mcp-all.jar
 Get-FileHash mcp-server/build/libs/burp-mcp-all.jar -Algorithm SHA256
-$expectedJarHash = ((Get-Content -LiteralPath 'mcp-server/SHA256SUMS' | Where-Object { $_ -match '  build/libs/burp-mcp-all.jar$' }) -split ' ')[0]
-if ((Get-FileHash -LiteralPath 'mcp-server/build/libs/burp-mcp-all.jar' -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedJarHash) { throw '配布JARのhashが一致しません。ロードを中止してください。' }
 Copy-Item mcp-server/diagnosis/AGENTS.md,mcp-server/diagnosis/CLAUDE.md,mcp-server/diagnosis/spec.md,mcp-server/diagnosis/read.me,mcp-server/diagnosis/quicksetup.txt -Destination $setupRoot
 New-Item -ItemType Directory -Path (Join-Path $setupRoot 'temp') | Out-Null
 ```
 
-表示した2つのコミットとJARのhashを保存してください。過去の開発PCの`runtime`・Project・台帳・認証情報・`.claude`をコピーしません。CPHに含まれる`runtime/cph-connection.json`は秘密を含まない相対参照であり、ローカル生成される認証情報とは別です。初回のMCP runtimeは存在せず、CPHの参照先は`../../mcp-server/runtime`であることを確認します。配布JARがない場合は導入を止めます。
+表示した2つのコミットとJARのhashを保存してください。過去の開発PCの`runtime`・Project・台帳・認証情報・`.claude`をコピーしません。CPHに含まれる`runtime/cph-connection.json`は秘密を含まない相対参照であり、ローカル生成される認証情報とは別です。配布JARがない場合は導入を止めます。
+
+## ロードするJARとCPHの参照先を揃える
+
+フォルダー名を決めてから、実際にBurpへロードするJARとCPHフォルダーを指定します。別名でcloneした場合は、この2つの値を実配置に合わせます。標準名の別cloneを自動探索して選ぶことはありません。
+
+```powershell
+$selectedMcpJar = Join-Path $setupRoot 'mcp-server/build/libs/burp-mcp-all.jar'
+$selectedCphRoot = Join-Path $setupRoot 'burp-cph'
+& "$setupRoot/mcp-server/configure-runtime.ps1" -McpJar $selectedMcpJar -CphRoot $selectedCphRoot
+```
+
+既定は読取り専用です。`expectedRuntime`と`configuredRuntime`、`pairingMatches`を確認します。初回の`profileState=NOT_INITIALIZED`は正常で、資格情報はまだ作りません。`INVALID`・`PARTIAL`・`NOT_REVIEW`、`managedCredentialRedirectPresent=true`は別途確認が必要です。`launchOverridesPresent=true`の場合は終了コード2で起動環境の確認を要求し、値そのものは表示しません。このシェルの環境と稼働中Burpが引き継いだ環境は別なので、出力だけで実効状態を断定しません。
+
+新規導入ではBurp起動前に、次で参照を設定します。既設環境では診断を終了・保全し、許可された停止保守でのみ行います。`-WhatIf`で変更なしの確認もできます。
+
+```powershell
+& "$setupRoot/mcp-server/configure-runtime.ps1" -McpJar $selectedMcpJar -CphRoot $selectedCphRoot -Configure -BurpStopped
+if ($LASTEXITCODE -ne 0) { throw 'Runtime接続設定を確認してください。診断は開始しません。' }
+```
+
+Burpプロセス・既定ポートの待受・確認不能・起動環境の上書きがある場合は書込みを拒否します。バックアップは親ディレクトリーの`temp/runtime-connection`へ保存し、CPH接続ファイルの`runtimeDirectory`だけを変更します。既存の秘密・settings・台帳・能力登録は変更しません。同じ参照なら書込み・バックアップを重複しません。
+
+親フォルダー全体を移動した場合は相対参照が維持されます。片方だけの改名・移動、ロードするJARの変更時は同じコマンドで再確認・設定してください。別ドライブ間では絶対参照になるため、移動時は再設定します。接続先が消えたCPHは管理認証を解除して起動せず、`CPH_RUNTIME_PROFILE_MISSING`で停止します。MCPを先にロードし、このPC用のruntime生成後にCPHをロードしてください。
+
+これらはファイルの確認・設定です。MCPとCPHは起動時の認証情報を保持するため、稼働中の反映確認を代替しません。診断中の拡張再ロードは禁止です。
 
 ## BurpとClaude Codeを接続する
 
@@ -49,7 +68,7 @@ claude mcp get burp
 claude
 ```
 
-Claude Codeの最初の画面でプロジェクトとMCP接続を確認し、`/mcp`で接続を確認します。`CLAUDE.md`の`@AGENTS.md`と同じ場所の`spec.md`を全文読み込ませ、使用中の3文書と`temp`の絶対パスを示させます。公開`get_cph_config`で`success=true`かつ`managed=true`を確認します。秘密値は表示させません。接続設定の形式は[Claude Code公式MCP説明](https://code.claude.com/docs/en/mcp)、文書Importは[公式memory説明](https://code.claude.com/docs/en/memory)を参照してください。
+Claude Codeの最初の画面でプロジェクトとMCP接続を確認し、`/mcp`で接続を確認します。`CLAUDE.md`の`@AGENTS.md`と同じ場所の`spec.md`を全文読み込ませ、使用中の3文書と`temp`の絶対パスを示させます。公開`get_cph_config`で`success=true`かつ`managed=true`、新しいファイル方式では`connectionDiagnostics.runtimeMatches=true`を確認します。falseなら参照先不一致、nullなら環境変数方式・旧CPH等で照合不能なので、一致と断定せず起動設定・対応版を確認します。403 CPH_AUTH_REQUIREDは接続認証の失敗です。実ロード先と起動環境を調べ、秘密のコピー・管理解除・診断中の再ロードで回避しません。秘密値は表示させません。接続設定の形式は[Claude Code公式MCP説明](https://code.claude.com/docs/en/mcp)、文書Importは[公式memory説明](https://code.claude.com/docs/en/memory)を参照してください。
 
 ## 空の能力一覧から検証・登録する
 

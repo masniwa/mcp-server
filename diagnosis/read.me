@@ -295,6 +295,10 @@ MCPタブで以下を設定する。表の接続先は初期値であり、変�
 
 `Always allow MCP Logger capture access` 等は、その版に項目がある場合だけ設定する。
 
+configure-runtime.ps1を含む配布版では、ロード前に実際のJARとCPHフォルダーを指定してruntime参照を照合する。`configure-runtime.ps1 -McpJar <実際のJAR> -CphRoot <実際のCPHフォルダー>`は読取り専用で、停止保守中に`-Configure -BurpStopped`を加えると相対参照を生成する。親フォルダー全体の移動は相対参照で維持し、片方だけの改名・移動やロードJAR変更時は再確認する。旧runtimeや秘密をコピーせず、同じ名前の別cloneを自動選択しない。新規runtimeはMCP初回ロードで生成し、その後にCPHをロードする。明示参照先の欠落によるCPH_RUNTIME_PROFILE_MISSINGを、管理解除で回避しない。操作例と保守条件は配布MCPのINSTALL-WINDOWS.mdを参照する。
+
+対応版のget_cph_configはconnectionDiagnosticsにMCPの起動時参照とruntimeMatchesを返す。ファイル方式ではsuccess=true・managed=trueと一致を確認する。nullは環境変数方式・旧CPH等により照合できないことを意味し、一致済みとしない。ファイル変更だけで起動中の認証情報が更新されたとは判断せず、診断中は再ロードしない。
+
 ## 7 BurpへCPHをロードする
 
 1. Burpの **Settings → Extensions → Python environment** を開く。

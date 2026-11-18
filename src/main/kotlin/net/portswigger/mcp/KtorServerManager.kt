@@ -42,7 +42,7 @@ import kotlinx.io.readByteArray
 class KtorServerManager(private val api: MontoyaApi, private val managed:ManagedSettings=ManagedSettings.forExtension()) : ServerManager {
     private val instanceId=UUID.randomUUID().toString()
     private val dispatch=ToolDispatch(managed.enabled)
-    private val executionContext=BurpExecutionContext(api,CphClient(managed.cphToken))
+    private val executionContext=BurpExecutionContext(api,CphClient(managed.cphToken,managed.connectionMetadata()))
     private var jobStore:JobStore?=null
     private var workerProtocol:WorkerProtocol?=null
     private var diagnosticJobs:DiagnosticJobService?=null

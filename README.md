@@ -1,4 +1,12 @@
-# Burp MCP Server -re 1.4.19
+# Burp MCP Server -re 1.4.20
+
+## 1.4.20：clone・改名時のruntime接続
+
+[configure-runtime.ps1](configure-runtime.ps1)で、実際にロードするMCP JARとCPHフォルダーを指定し、runtime参照を確認・設定できます。既定は読取り専用で、変更はBurpを停止した保守中だけです。フォルダー名を固定せず相対参照を生成し、秘密や台帳をコピーしません。親フォルダー全体の移動は参照を維持し、片方だけの改名・移動時は再実行します。
+
+新しいCPHは明示参照先の欠落時に管理認証なしで起動せず停止します。get_cph_configはMCP・CPHの起動時参照を照合し、connectionDiagnostics.runtimeMatchesを返します。旧CPHや環境変数方式ではnullとし、一致を推測しません。通常ジョブも、CPHが異なるruntimeを報告した場合はCPH_RUNTIME_MISMATCHで拒否します。診断中に拡張を再ロードせず、導入先では[INSTALL-WINDOWS.md](INSTALL-WINDOWS.md)の参照設定とロード後確認を行ってください。
+
+同梱JARは1.4.20 REVIEWです。今回はソース・ビルド・自動回帰を確認し、稼働中Burpには配備していません。以下の1.4.19の実機確認は当時の版に対する記録です。
 
 ## 1.4.19：再利用する認証設定
 
@@ -35,6 +43,7 @@ CPHのファイル名は配置互換性のためv0.2のままですが、ロー�
 ## 導入
 
 1. 両リポジトリを上記の兄弟フォルダーとして配置します。
+   Burp起動前に`configure-runtime.ps1 -McpJar <実際のJAR> -CphRoot <CPHフォルダー>`で確認し、停止保守中に`-Configure -BurpStopped`で参照を設定します。改名時もこの手順を使用します。
 2. BurpのExtensionsでJava拡張として `build/libs/burp-mcp-all.jar` をロードします。表示名は `Burp MCP Server -re` です。
 3. MCPが `runtime/settings.json` とローカル専用の資格情報を生成してから、CPH側のREADMEに従ってCPHをロードします。
 4. MCPタブの実効モードがREVIEWであることを確認します。必要な設定編集・履歴・Logger参照の許可はオペレーターが操作します。

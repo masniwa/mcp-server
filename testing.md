@@ -1,5 +1,15 @@
 # 配布版の検証範囲
 
+## 1.4.20のruntime接続
+
+実際に選択するMCP JARとCPHフォルダーを指定して参照を照合し、停止保守時に相対参照だけを生成する。親フォルダー全体の移動、片方だけの改名と再設定、複数clone、新規runtime、日本語・空白パス、既定REVIEW、環境変数の上書き、稼働・待受・照会失敗時の拒否、WhatIf、バックアップ・冪等性、秘密非表示を回帰する。CPH接続先の欠落で認証なしの起動へ落とさず、旧CPHや環境変数方式の参照照合不能はnullとする。異なるruntimeを報告したCPHは通常ジョブでも拒否する。
+
+`scripts/tests/test_runtime_connection.py`は製品CLIを隔離cloneへコピーして実行し、OSの状態照会だけを子プロセス内で模擬する。製品へのテスト用迂回フラグはない。`CphConnectionTest`は起動時参照、runtimeの一致・不一致・不明、403案内、通常ジョブ拒否と秘密非表示を確認する。PowerShellチェックの成功はファイル状態であり、稼働中Burpのモード・参照・通信を証明しない。
+
+配布checkoutの178件（MCP19・契約77・runner82、failure/error/skip=0）とGradle Wrapperのtest・embedProxyJarが成功した。開発側ではJVM611件、CPython70件、PowerShell11件、Jython12件が成功し、実SSEで公開get_cph_configの403案内と対象送信・設定変更0件を確認した。ソースと再ビルドJARはmanifestのビルド情報以外が一致する。配布バイナリは1.4.20 REVIEWで、hashはSHA256SUMSを参照する。
+
+今回の1.4.20は稼働中Burpへ配備していない。実機能力検証や実対象の認証・Macro・CPH動作へ合格範囲を広げず、導入先ではINSTALL-WINDOWS.mdに従って起動時の参照一致を確認する。以下の1.4.19以前の配備記録は当時の版の検証である。
+
 ## 1.4.19の認証設定保持・切替
 
 認証Ruleの保持、検証・回復Macroの整数参照、CPHキャッシュ依存と順序、待機時の無効化、対象別の有効化、元のRule順序、必要なcphToolsの宣言とOptions反映・復元を回帰します。宣言漏れ・不正Tool名・必要Toolが無効な保存planは送信前に拒否し、旧wire形式の読取り・回復を維持します。

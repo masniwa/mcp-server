@@ -37,6 +37,12 @@ Burp同梱のjre\bin\java.exeの絶対パスも確認します。
 
 ③ Burp Projectを選択
 
+新しい配布版にconfigure-runtime.ps1がある場合は、Burp起動前に
+  configure-runtime.ps1 -McpJar <ロードするJAR> -CphRoot <CPHフォルダー>
+で参照を確認します。設定は停止保守で -Configure -BurpStopped を加えます。
+片方だけの改名・移動やロードJAR変更時は再実行し、秘密や旧台帳をコピーしません。
+詳細と起動後のruntimeMatches確認は配布MCPのINSTALL-WINDOWS.mdを使います。
+
 初回：Burp Suite ProfessionalでNew project on diskを選び、
 burpdata\<案件名>.burpへ新規保存し、Burpの既定設定で始めます。
 過去の設定JSONやnothing.burp／nothing.jsonの読込みは必要ありません。

@@ -3,10 +3,17 @@ package net.portswigger.mcp.jobs
 import java.nio.file.Path
 import java.security.MessageDigest
 import net.portswigger.diagnosis.contract.requireJob
+import kotlinx.serialization.json.*
 
 data class ManagedSettings(val enabled:Boolean, val workerToken:String?, val cphToken:String?, val directory:Path?,val capabilities:Set<String>,
     val inputRoots:List<Path> = emptyList(),val secretGenerationsFile:Path?=null,val profileFile:Path?=null,
     val quick:Boolean=false) {
+    /** Non-secret STARTUP selection; do not expose this data class (it contains tokens). */
+    fun connectionMetadata() = buildJsonObject {
+        put("source",if(profileFile!=null) "file" else if(enabled) "environment" else "standalone")
+        put("runtimeDirectory",profileFile?.parent?.toAbsolutePath()?.normalize()?.toString()?.let { JsonPrimitive(it) } ?: JsonNull)
+        if(enabled) put("authorizationMode",if(quick) "QUICK" else "REVIEW")
+    }
     fun authorized(header:String?):Boolean = enabled && workerToken!=null && header!=null &&
         MessageDigest.isEqual(header.toByteArray(),"Bearer $workerToken".toByteArray())
     companion object {

@@ -1,12 +1,18 @@
 param(
     [string]$CphRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) 'burp-cph'),
+    [string]$McpJar = (Join-Path $PSScriptRoot 'build/libs/burp-mcp-all.jar'),
     [switch]$DynamicWorkflow
 )
 $ErrorActionPreference = 'Stop'
-$runtime = Join-Path $PSScriptRoot 'runtime'
+. (Join-Path $PSScriptRoot 'scripts/RuntimeConnection.ps1')
+try {
+    $selection = Get-RuntimeSelection -McpJar $McpJar -CphRoot $CphRoot
+    $connectionReport = Test-RuntimeConnection $selection
+} catch { Write-Output 'MISSING  Runtime selection invalid; run configure-runtime.ps1 with the actual selected JAR and CPH paths.'; exit 1 }
+$runtime = $selection.McpRuntime
 $checks = [ordered]@{}
 foreach ($name in @('build/libs/burp-mcp-all.jar','libs/mcp-proxy-all.jar')) {
-    $checks[$name] = Test-Path -LiteralPath (Join-Path $PSScriptRoot $name) -PathType Leaf
+    $checks[$name] = Test-Path -LiteralPath (Join-Path $selection.McpRoot $name) -PathType Leaf
 }
 $java = Get-Command java.exe -ErrorAction SilentlyContinue
 $checks['Java 21 or newer on PATH'] = $false
@@ -19,20 +25,18 @@ if ($java) {
 foreach ($name in @('CustomParamHandler_marged_api_v0.2.py','CPH_Managed.py','CPH_API_v0_2.py')) {
     $checks[$name] = Test-Path -LiteralPath (Join-Path $CphRoot $name) -PathType Leaf
 }
-$connection = Join-Path $CphRoot 'runtime/cph-connection.json'
-$checks['CPH points to this MCP runtime'] = $false
-if (Test-Path -LiteralPath $connection -PathType Leaf) {
-    $value = (Get-Content -LiteralPath $connection -Raw | ConvertFrom-Json).runtimeDirectory
-    if ($value) {
-        $path = if ([IO.Path]::IsPathRooted($value)) { $value } else { Join-Path (Split-Path -Parent $connection) $value }
-        $checks['CPH points to this MCP runtime'] = [IO.Path]::GetFullPath($path) -eq [IO.Path]::GetFullPath($runtime)
-    }
-}
+$checks['CPH points to selected MCP runtime'] = $connectionReport.pairingMatches
+$checks['Valid local credential profile'] = $connectionReport.profileState -eq 'READY'
+$checks['No legacy MCP credential redirect'] = -not $connectionReport.managedCredentialRedirectPresent
+$checks['No launch overrides in this shell (Burp environment still needs checking)'] = -not $connectionReport.launchOverridesPresent
+Write-Output ("Selected MCP JAR: {0}" -f $selection.McpJar)
+Write-Output ("Expected runtime: {0}" -f $selection.McpRuntime)
+Write-Output ("Configured CPH runtime: {0}" -f $connectionReport.configuredRuntime)
 $settings = Join-Path $runtime 'settings.json'
 $checks['MCP has initialized local settings'] = Test-Path -LiteralPath $settings -PathType Leaf
 if ($checks['MCP has initialized local settings']) {
     $profile = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json
-    $checks['REVIEW settings'] = $profile.authorizationMode -eq 'REVIEW'
+    $checks['REVIEW settings'] = $connectionReport.profileState -eq 'READY'
     $required = @('SCANNER_WORKFLOW','EXCLUSIVE_CONTEXT')
     if ($DynamicWorkflow) { $required += 'DYNAMIC_WORKFLOW_VERIFIED' }
     foreach ($capability in $required) {
