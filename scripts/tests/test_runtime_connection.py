@@ -70,11 +70,21 @@ class RuntimeConnectionTest(unittest.TestCase):
 
     def test_default_is_read_only_and_detects_wrong_clone(self):
         self.initialize(); self.stale(); before=self.pointer.read_bytes()
+        # Exact reported failure: both clones have valid, independent profiles.
+        # Existence of the old runtime must not make its reference acceptable.
+        old=self.base/'mcp-server/runtime'; old.mkdir(parents=True)
+        (old/'settings.json').write_text('{"schemaVersion":1,"authorizationMode":"REVIEW"}')
+        (old/'operator-secrets.json').write_text(json.dumps({'worker':'a'*48,'cph':'b'*48}))
+        old_before={p:p.read_bytes() for p in old.iterdir()}
         result=self.run_cli()
         self.assertEqual(1,result.returncode,result.stdout+result.stderr)
         self.assertFalse(json.loads(result.stdout)['pairingMatches'])
         self.assertEqual(before,self.pointer.read_bytes())
         self.assertFalse((self.base/'temp').exists())
+        result=self.run_cli(configure=True)
+        self.assertEqual(0,result.returncode,result.stdout+result.stderr)
+        self.assertTrue(json.loads(result.stdout)['pairingMatches'])
+        for p,value in old_before.items(): self.assertEqual(value,p.read_bytes())
 
     def test_configure_uses_selected_jar_and_preserves_everything_else(self):
         self.initialize(); self.stale()
