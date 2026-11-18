@@ -35,7 +35,8 @@ Write-Output ("Configured CPH runtime: {0}" -f $connectionReport.configuredRunti
 $settings = Join-Path $runtime 'settings.json'
 $checks['MCP has initialized local settings'] = Test-Path -LiteralPath $settings -PathType Leaf
 if ($checks['MCP has initialized local settings']) {
-    $profile = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json
+    try { $profile = Read-RuntimeJson $settings }
+    catch { Write-Output 'MISSING  Settings JSON invalid; input details withheld.'; exit 1 }
     $checks['REVIEW settings'] = $connectionReport.profileState -eq 'READY'
     $required = @('SCANNER_WORKFLOW','EXCLUSIVE_CONTEXT')
     if ($DynamicWorkflow) { $required += 'DYNAMIC_WORKFLOW_VERIFIED' }

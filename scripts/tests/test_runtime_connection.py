@@ -30,6 +30,7 @@ class RuntimeConnectionTest(unittest.TestCase):
         (self.mcp/'build/libs').mkdir(parents=True)
         (self.mcp/'scripts').mkdir()
         shutil.copy2(PROJECT/'configure-runtime.ps1',self.mcp)
+        shutil.copy2(PROJECT/'check-install.ps1',self.mcp)
         shutil.copy2(PROJECT/'scripts/RuntimeConnection.ps1',self.mcp/'scripts')
         self.jar=self.mcp/'build/libs/burp-mcp-all.jar'
         with zipfile.ZipFile(self.jar,'w') as archive:
@@ -176,5 +177,14 @@ class RuntimeConnectionTest(unittest.TestCase):
             result=self.run_cli()
             self.assertEqual(1,result.returncode,result.stdout+result.stderr)
             self.assertEqual('NOT_REVIEW',json.loads(result.stdout)['profileState'])
+
+    def test_install_check_does_not_print_malformed_settings_content(self):
+        self.initialize(); self.stale()
+        (self.mcp/'runtime/settings.json').write_text('{"schemaVersion":1,"unexpected":"'+self.secrets['cph']+'",broken}',encoding='utf-8')
+        result=subprocess.run([PWSH,'-NoProfile','-NonInteractive','-File',str(self.mcp/'check-install.ps1'),
+                               '-CphRoot',str(self.cph)],env=self.env,cwd=TEMP,capture_output=True,encoding='utf-8',timeout=30)
+        self.assertEqual(1,result.returncode,result.stdout+result.stderr)
+        self.assertIn('input details withheld',result.stdout)
+        for value in self.secrets.values(): self.assertNotIn(value,result.stdout+result.stderr)
 
 if __name__=='__main__': unittest.main()

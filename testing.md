@@ -6,7 +6,7 @@
 
 `scripts/tests/test_runtime_connection.py`は製品CLIを隔離cloneへコピーして実行し、OSの状態照会だけを子プロセス内で模擬する。製品へのテスト用迂回フラグはない。`CphConnectionTest`は起動時参照、runtimeの一致・不一致・不明、403案内、通常ジョブ拒否と秘密非表示を確認する。PowerShellチェックの成功はファイル状態であり、稼働中Burpのモード・参照・通信を証明しない。
 
-配布checkoutの178件（MCP19・契約77・runner82、failure/error/skip=0）とGradle Wrapperのtest・embedProxyJarが成功した。開発側ではJVM611件、CPython70件、PowerShell11件、Jython12件が成功し、実SSEで公開get_cph_configの403案内と対象送信・設定変更0件を確認した。ソースと再ビルドJARはmanifestのビルド情報以外が一致する。配布バイナリは1.4.20 REVIEWで、hashはSHA256SUMSを参照する。
+配布checkoutの178件（MCP19・契約77・runner82、failure/error/skip=0）とGradle Wrapperのtest・embedProxyJarが成功した。開発側ではJVM611件、CPython70件、PowerShell12件、Jython12件が成功し、実SSEで公開get_cph_configの403案内と対象送信・設定変更0件を確認した。check-installの不正なsettings JSONも内容を表示せずに拒否する。ソースと再ビルドJARはmanifestのビルド情報以外が一致する。配布バイナリは1.4.20 REVIEWで、hashはSHA256SUMSを参照する。
 
 今回の1.4.20は稼働中Burpへ配備していない。実機能力検証や実対象の認証・Macro・CPH動作へ合格範囲を広げず、導入先ではINSTALL-WINDOWS.mdに従って起動時の参照一致を確認する。以下の1.4.19以前の配備記録は当時の版の検証である。
 
