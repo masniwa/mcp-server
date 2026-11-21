@@ -1,6 +1,9 @@
 package net.portswigger.mcp.schema
 
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.InternalSerializationApi
+import kotlinx.serialization.serializer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -44,14 +47,21 @@ fun getJsonSchemaForProperty(kType: kotlin.reflect.KType): JsonElement {
     }
 }
 
+@OptIn(InternalSerializationApi::class, ExperimentalSerializationApi::class)
 fun KClass<*>.asInputSchema(): ToolSchema {
     val properties = mutableMapOf<String, JsonElement>()
     val required = mutableListOf<String>()
+    // Match the decoder's omission rules, without constructing inputs or evaluating defaults.
+    // In particular @Required must remain required even when a Kotlin default exists.
+    val descriptor = serializer().descriptor
+    val optional = (0 until descriptor.elementsCount)
+        .filter { descriptor.isElementOptional(it) }
+        .map { descriptor.getElementName(it) }.toSet()
 
     for (prop in memberProperties) {
         properties[prop.name] = getJsonSchemaForProperty(prop.returnType)
 
-        if (!prop.returnType.isMarkedNullable) {
+        if (!prop.returnType.isMarkedNullable && prop.name !in optional) {
             required.add(prop.name)
         }
     }

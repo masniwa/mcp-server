@@ -233,7 +233,7 @@ class AutoApproveTargetsPanel(private val config: McpConfig) : JPanel() {
                     } else {
                         Dialogs.showMessageDialog(
                             findBurpFrame(),
-                            "Invalid target format. Use hostname, IP address, hostname:port, or wildcard (*.domain)",
+                            "対象の形式が正しくありません。ホスト名、IPアドレス、ホスト名:ポート、またはワイルドカード（*.domain）を指定してください。",
                             ERROR_MESSAGE
                         )
                     }
@@ -253,7 +253,7 @@ class AutoApproveTargetsPanel(private val config: McpConfig) : JPanel() {
         val clearButton = Design.createOutlinedButton("Clear All").apply {
             addActionListener {
                 val result = Dialogs.showConfirmDialog(
-                    findBurpFrame(), "Remove all auto-approved targets?", YES_NO_OPTION
+                    findBurpFrame(), "自動許可する対象をすべて削除しますか？", YES_NO_OPTION
                 )
 
                 if (result == YES_OPTION) {

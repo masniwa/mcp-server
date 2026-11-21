@@ -1,5 +1,15 @@
 # Burp Suite MCP Server Extension
 
+改修REVIEW版1.4.20では、[configure-runtime.ps1](configure-runtime.ps1)で実際にロードするJARとCPHを指定し、clone先・フォルダー名から独立したruntime参照を確認・設定できます。既定は読取り専用で、設定はBurp停止保守に限定します。get_cph_configは起動時の参照情報とruntimeMatchesを返します。導入・改名時の操作は[INSTALL-WINDOWS.md](INSTALL-WINDOWS.md)を参照してください。稼働中の拡張には自動反映しません。
+
+新規Windowsへの管理配布版の導入と初回能力検証は[INSTALL-WINDOWS.md](INSTALL-WINDOWS.md)を参照してください。配布時の配置名はmcp-server／burp-cphです。開発用runtimeや資格情報は移植せず、公開diagnostic_jobの固定ローカル対象と人間承認で確認・登録します。
+
+この改修版は、Extensionsで`build/libs/burp-mcp-all.jar`を選ぶとインストール先のruntime設定で診断ジョブ管理モードを開始します。従来版と改修版の選択、独立配置したCPH -re、認証情報・runner・保存先は[LOAD.md](LOAD.md)へ集約しています。以下は共通のUpstream導入説明です。
+
+通常の`mcp-server -re`はREVIEWで運用します。診断依頼の形式はRequest IDの指定を維持し、AIが対象別の動的設定案を作成してMCP `diagnostic_job`へ渡します。人間承認・非同期実行・ログ保存・回復の仕様は[実行サービス](diagnosis-runner/README.md)、検証結果と未確認範囲は[testing.md](testing.md)を参照してください。
+
+対応版では、新規execute前に`plan_next`へ現在のexecutionIdとnextTargetsJsonで依頼順の残対象を宣言し、最後の対象も`nextTargetsJson="[]"`を明示します。Scan中はAIが次のnative Macro／Rule／CPHを作成して`diagnostic_draft submit_next`へ提出し、サービスが保存済み適用前baselineで既存コンパイラを自動実行します。未正式化の合格済み案も新revision・新draftIdで修正でき、旧下書きを保持して最新の結合済み合格案だけを正式化します。情報不足・未提出・失敗を合格とせず、次対象への設定反映・送信・Scan開始は現在処理の復元後に通常の人間承認と実通信検証を経て行います。設定を生成する外部LLMは追加していません。操作形式は公開Tool Descriptionを参照してください。
+
 ## Overview
 
 Integrate Burp Suite with AI Clients using the Model Context Protocol (MCP).
@@ -146,3 +156,9 @@ The tool name is auto-derived from its parameters data class. A description is a
 a string or a `List<ContentBlock>` to provide data back to the LLM.
 
 Extend the Paginated interface to add auto-pagination support.
+
+## このコピーの診断ジョブ実装
+
+`diagnosis-contract`、`diagnosis-runner`とBurp側の管理実行境界を追加しています。既存互換モードは維持し、管理モードではジョブ内容に結び付けた人間の承認を必須にします。Macro／Rule／CPHのnative設定と既存のMontoya Scanner callbackを再利用します。
+
+構成・状態・起動設定・制約は[診断ジョブ実行サービス](diagnosis-runner/README.md)、検証方法は[testing.md](testing.md)を参照してください。Burpへの配備・実通信は別承認です。

@@ -17,3 +17,4 @@ plugins {
 }
 
 rootProject.name = "burp-mcp"
+include("diagnosis-contract", "diagnosis-runner")

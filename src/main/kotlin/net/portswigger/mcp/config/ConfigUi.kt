@@ -139,12 +139,12 @@ class ConfigUi(private val config: McpConfig, private val providers: List<Provid
                     enabledToggle.setState(false, animate = false)
 
                     val friendlyMessage = when (state.exception) {
-                        is UnresolvedAddressException -> "Unable to resolve address"
+                        is UnresolvedAddressException -> "アドレスを解決できません"
                         else -> state.exception.message ?: state.exception.javaClass.simpleName
                     }
 
                     Dialogs.showMessageDialog(
-                        panel, "Failed to start Burp MCP Server: $friendlyMessage", ERROR_MESSAGE
+                        panel, "Burp MCP Serverを起動できませんでした：$friendlyMessage", ERROR_MESSAGE
                     )
                 }
             }

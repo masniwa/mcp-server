@@ -1,5 +1,8 @@
 package net.portswigger.mcp.tools
 
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.int
+
 import burp.api.montoya.MontoyaApi
 import burp.api.montoya.burpsuite.TaskExecutionEngine
 import burp.api.montoya.collaborator.*
@@ -45,7 +48,429 @@ import java.net.ServerSocket
 import javax.swing.JTextArea
 
 class ToolsKtTest {
+    @Test fun `public CPH read reports authentication guidance without target traffic or guessed live paths`() = runBlocking {
+        val http=api.http()
+        val suite=api.burpSuite()
+        val fixture=com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1",0),0)
+        val calls=java.util.concurrent.atomic.AtomicInteger()
+        fixture.createContext("/cph/export") { exchange ->
+            calls.incrementAndGet()
+            assertNull(exchange.requestHeaders.getFirst("Authorization"))
+            val body="""{"success":false,"message":"CPH_AUTH_REQUIRED"}""".toByteArray()
+            exchange.sendResponseHeaders(403,body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+            exchange.close()
+        }
+        fixture.start()
+        try {
+            val result=Json.parseToJsonElement(client.callTool("get_cph_config",mapOf("host" to "127.0.0.1","port" to fixture.address.port)).expectTextContent()).jsonObject
+            assertEquals("false",result["success"]!!.jsonPrimitive.content)
+            assertEquals(403,result["status"]!!.jsonPrimitive.int)
+            val diagnostics=result["connectionDiagnostics"]!!.jsonObject
+            assertEquals("CPH_AUTH_REQUIRED",diagnostics["code"]!!.jsonPrimitive.content)
+            assertEquals(kotlinx.serialization.json.JsonNull,diagnostics["runtimeMatches"])
+            assertTrue(diagnostics["guidance"]!!.jsonPrimitive.content.contains("Do not reload during diagnosis"))
+            val description=client.listTools().single { it.name=="get_cph_config" }.description!!
+            assertTrue(description.contains("-Configure -BurpStopped"))
+            assertTrue(description.contains("null means unknown"))
+            assertFalse(description.contains("testing.md"))
+            assertEquals(1,calls.get())
+            verify(exactly=0) { http.sendRequest(any<HttpRequest>()) }
+            verify(exactly=0) { suite.importProjectOptionsFromJson(any<String>()) }
+        } finally { fixture.stop(0) }
+    }
+
+    @Test fun `optional Proxy history metadata exposes native IDs rather than offsets without sending traffic`() = runBlocking {
+        val http = api.http()
+        for(name in listOf("get_proxy_http_history","get_proxy_http_history_regex")) {
+            val schema=client.listTools().single { it.name==name }.inputSchema
+            assertFalse("includeRequestIds" in schema.required.orEmpty(),name)
+            assertTrue(schema.required.orEmpty().containsAll(listOf("count","offset")),name)
+        }
+        val wire = "POST /dispatch?action=put HTTP/1.1\r\nHost: example.test\r\n\r\n日本語".toByteArray(Charsets.UTF_8) + byteArrayOf(0, 0x80.toByte(), 0xff.toByte())
+        val rows = listOf(701, 42).map { id ->
+            val row = mockk<ProxyHttpRequestResponse>(relaxed = true)
+            val request = mockk<HttpRequest>(relaxed = true)
+            val bytes = mockk<ByteArray>()
+            every { row.request().toString() } returns "GET /original HTTP/1.1\r\n\r\n"
+            every { row.response().toString() } returns "HTTP/1.1 200 OK\r\n\r\nlegacy response"
+            every { row.annotations().notes() } returns "legacy notes"
+            every { row.id() } returns id
+            every { row.finalRequest() } returns request
+            every { row.time() } returns ZonedDateTime.parse("2026-11-12T00:00:00Z")
+            every { request.url() } returns "http://example.test/dispatch?action=put"
+            every { request.toString() } returns wire.toString(Charsets.UTF_8)
+            every { request.toByteArray() } returns bytes
+            every { bytes.bytes } returns wire
+            row
+        }
+        every { api.proxy().history() } returns rows
+        val raw = client.callTool("get_proxy_http_history", mapOf("count" to 1, "offset" to 1, "includeRequestIds" to true)).expectTextContent()
+        val result = Json.parseToJsonElement(raw).jsonObject
+        assertEquals(42, result["requestId"]!!.jsonPrimitive.int)
+        assertEquals("PROXY_UI", result["idSource"]!!.jsonPrimitive.content)
+        assertArrayEquals(wire, java.util.Base64.getDecoder().decode(result["requestBase64"]!!.jsonPrimitive.content))
+        assertEquals("http://example.test/dispatch?action=put", result["url"]!!.jsonPrimitive.content)
+        assertEquals(rows[1].time().toString(), result["requestTime"]!!.jsonPrimitive.content)
+        assertEquals(setOf("requestId","idSource","url","requestTime","requestBase64"),result.keys)
+        val regex = client.callTool("get_proxy_http_history_regex", mapOf("count" to 1, "offset" to 0, "regex" to "action=put", "includeRequestIds" to true)).expectTextContent()
+        val regexResult=Json.parseToJsonElement(regex).jsonObject
+        assertEquals(701, regexResult["requestId"]!!.jsonPrimitive.int)
+        assertArrayEquals(wire,java.util.Base64.getDecoder().decode(regexResult["requestBase64"]!!.jsonPrimitive.content))
+        val legacy=client.callTool("get_proxy_http_history",mapOf("count" to 1,"offset" to 1,"includeRequestIds" to false)).expectTextContent()
+        val legacyDefault=client.callTool("get_proxy_http_history",mapOf("count" to 1,"offset" to 1)).expectTextContent()
+        assertEquals(legacyDefault,legacy)
+        val legacyFields=Json.parseToJsonElement(legacy).jsonObject
+        assertEquals(setOf("request","response","notes"),legacyFields.keys)
+        assertEquals("GET /original HTTP/1.1\r\n\r\n",legacyFields["request"]!!.jsonPrimitive.content)
+        assertEquals("legacy notes",legacyFields["notes"]!!.jsonPrimitive.content)
+        verify(exactly = 0) { http.sendRequest(any<HttpRequest>()) }
+    }
+
+    @Test fun `large unicode history survives actual MCP pagination without byte boundary loss`() = runBlocking {
+        val items=List(4) { mockk<ProxyHttpRequestResponse>() }
+        every { api.proxy().history() } returns items
+        mockkStatic("net.portswigger.mcp.schema.SerializationKt")
+        val expected=items.mapIndexed { i,item ->
+            val content="x".repeat(4093+i)+"日本語é🚀\\u1234\r\n".repeat(10000)
+            HttpRequestResponse("GET / HTTP/1.1\r\nX-Name: $content", "HTTP/1.1 200 OK\r\n\r\n$content", "注記$i").also {
+                every { item.toSerializableForm() } returns it
+            }
+        }
+        val output=client.callTool("get_proxy_http_history",mapOf("count" to 4,"offset" to 0)).expectTextContent()
+        assertTrue(output.all { it.code<128 })
+        val decoded=output.split("\n\n").map { Json.decodeFromString<HttpRequestResponse>(it) }
+        assertEquals(expected,decoded)
+    }
+
+    @Test
+    fun `conditional session generator is exposed through MCP without applying settings or sending HTTP`() = runBlocking {
+        val description = client.listTools().single { it.name == "generate_session_validation_action" }.description!!
+        assertTrue(description.contains("not a justification for OMIT"))
+        assertTrue(description.contains("diagnostic_job"))
+        val http = api.http()
+        val burpSuite = api.burpSuite()
+        val result = client.callTool("generate_session_validation_action", mapOf(
+            "lookFor" to "observed-authenticated-user", "validationMacroSerialNumber" to 101,
+            "recoveryMacroSerialNumber" to 102, "recoveryParameterNames" to listOf("csrf")
+        )).expectTextContent()
+        val action = Json.parseToJsonElement(result).jsonObject
+        assertEquals(Json.parseToJsonElement("false"), action["stop_if_valid"])
+        assertEquals(Json.parseToJsonElement("true"), action["perform_action_if_invalid"])
+        assertEquals(Json.parseToJsonElement("102"), action["run_macro_action"]!!.jsonObject["macro_serial_number"])
+        assertEquals(Json.parseToJsonElement("[\"csrf\"]"), action["run_macro_action"]!!.jsonObject["specified_params"])
+        verify(exactly = 0) { http.sendRequest(any<HttpRequest>()) }
+        verify(exactly = 0) { burpSuite.importProjectOptionsFromJson(any()) }
+    }
+
+    // >> 20261008 mniwa Verify session-rule container isolation, complete rule identity, compatible layouts, and the user-settings wrapper.
+    @Test
+    fun `session rule lookup ignores unrelated rules arrays`() = runBlocking {
+        every { api.burpSuite().exportProjectOptionsAsJson() } returns """
+            {
+              "project_options":{"sessions":{"session_handling_rules":{"rules":[]}}},
+              "proxy":{
+                "intercept_client_requests":{"rules":[{"enabled":true,"match_type":"http_method"}]},
+                "intercept_server_responses":{"rules":[{"enabled":false,"match_type":"status_code"}]}
+              },
+              "rules":[{"description":"unrelated","enabled":true}]
+            }
+        """.trimIndent()
+        val result = Json.parseToJsonElement(client.callTool("get_session_handling_rules", emptyMap()).expectTextContent())
+        assertEquals(Json.parseToJsonElement("[]"), result)
+    }
+
+    @Test
+    fun `session rule lookup preserves same name rules with different actions and scope`() = runBlocking {
+        val rules = """
+            [
+              {"description":"same name","enabled":true,"url_scope":"custom","tools_scope":["Scanner"],"include_in_scope":[{"prefix":"http://localhost/a"}],"actions":[{"type":"run_macro","macro_serial_number":11}]},
+              {"description":"same name","enabled":true,"url_scope":"custom","tools_scope":["Scanner"],"include_in_scope":[{"prefix":"http://localhost/a"}],"actions":[{"type":"run_macro","macro_serial_number":12}]},
+              {"description":"same name","enabled":true,"url_scope":"custom","tools_scope":["Scanner"],"include_in_scope":[{"prefix":"http://localhost/b"}],"actions":[{"type":"run_macro","macro_serial_number":11}]}
+            ]
+        """.trimIndent()
+        every { api.burpSuite().exportProjectOptionsAsJson() } returns
+            """{"project_options":{"sessions":{"session_handling_rules":{"rules":$rules}}}}"""
+        val result = Json.parseToJsonElement(client.callTool("get_session_handling_rules", emptyMap()).expectTextContent())
+        assertEquals(Json.parseToJsonElement(rules), result)
+    }
+
+    @Test
+    fun `session rule lookup supports nested flat and mirrored session containers`() = runBlocking {
+        val rule = """{"description":"native rule","enabled":true,"actions":[]}"""
+        val expected = Json.parseToJsonElement("[$rule]")
+        val options = listOf(
+            """{"project_options":{"sessions":{"session_handling_rules":{"rules":[$rule]}}}}""",
+            """{"sessions":{"session_handling_rules":{"rules":[$rule]}}}""",
+            """{"session_handling_rules":{"rules":[$rule]}}""",
+            """{"project_options":{"sessions":{"session_handling_rules":[$rule]}}}""",
+            """{"sessions":{"session_handling_rules":[$rule]}}""",
+            """{"session_handling_rules":[$rule]}""",
+            """{"project_options":{"sessions":{"session_handling_rules":{"rules":[$rule]}}},"session_handling_rules":[$rule]}"""
+        )
+        for (json in options) {
+            every { api.burpSuite().exportProjectOptionsAsJson() } returns json
+            val result = Json.parseToJsonElement(client.callTool("get_session_handling_rules", emptyMap()).expectTextContent())
+            assertEquals(expected, result, json)
+        }
+    }
+
+    @Test
+    fun `user options tool documents the native wrapper and imports only user options`() = runBlocking {
+        val description = client.listTools().single { it.name == "set_user_options" }.description!!
+        assertTrue(description.contains("'user_options'"))
+        assertFalse(description.contains("'project_options'"))
+        val json = """{"user_options":{}}"""
+        val burpSuite = api.burpSuite()
+        every { burpSuite.importUserOptionsFromJson(json) } just runs
+        client.callTool("set_user_options", mapOf("json" to json)).expectTextContent("User configuration has been applied")
+        verify(exactly = 1) { burpSuite.importUserOptionsFromJson(json) }
+        verify(exactly = 0) { burpSuite.importProjectOptionsFromJson(any()) }
+    }
+    // << mniwa
+
+    // >> 20261014 mniwa Test native Proxy IDs and Logger namespaces through real MCP dispatch with independent read permissions.
+    @Test
+    fun `direct Proxy ID lookup ignores row position and preserves the selected wire pair`() = runBlocking {
+        val proxy = api.proxy()
+        val http = api.http()
+        val first = mockk<ProxyHttpRequestResponse>(relaxed = true)
+        val target = mockk<ProxyHttpRequestResponse>(relaxed = true)
+        every { first.id() } returns 7
+        every { target.id() } returns 42
+        every { proxy.history() } returns listOf(target, first)
+        val request = mockk<HttpRequest>(relaxed = true)
+        every { target.finalRequest() } returns request
+        every { request.toString() } returns "GET /wire HTTP/1.1"
+        every { request.url() } returns "http://localhost:3000/wire"
+        every { request.httpService().host() } returns "localhost"
+        every { request.httpService().port() } returns 3000
+        every { request.httpService().secure() } returns false
+        every { target.time() } returns ZonedDateTime.parse("2026-10-14T00:00:00Z")
+        every { target.hasResponse() } returns true
+        every { target.originalResponse().toString() } returns "HTTP/1.1 200 OK"
+        val result = Json.parseToJsonElement(client.callTool("get_proxy_http_request_by_id", mapOf("requestId" to 42)).expectTextContent()).jsonObject
+        assertEquals("FOUND", result["status"]!!.jsonPrimitive.content)
+        assertEquals("GET /wire HTTP/1.1", result["proxy"]!!.jsonObject["request"]!!.jsonPrimitive.content)
+        assertEquals("HTTP/1.1 200 OK", result["proxy"]!!.jsonObject["response"]!!.jsonPrimitive.content)
+        every { target.hasResponse() } returns false
+        val pending = Json.parseToJsonElement(client.callTool("get_proxy_http_request_by_id", mapOf("requestId" to 42)).expectTextContent()).jsonObject
+        assertEquals("NO_RESPONSE_OBSERVED", pending["proxy"]!!.jsonObject["responseState"]!!.jsonPrimitive.content)
+        assertEquals("NOT_FOUND", Json.parseToJsonElement(client.callTool("get_proxy_http_request_by_id", mapOf("requestId" to 0)).expectTextContent()).jsonObject["status"]!!.jsonPrimitive.content)
+        every { proxy.history() } returns listOf(target, target)
+        assertEquals("AMBIGUOUS", Json.parseToJsonElement(client.callTool("get_proxy_http_request_by_id", mapOf("requestId" to 42)).expectTextContent()).jsonObject["status"]!!.jsonPrimitive.content)
+        verify(exactly = 0) { http.sendRequest(any<HttpRequest>()) }
+    }
+
+    @Test
+    fun `Proxy binary and native parameter options preserve invalid UTF8 bytes through MCP`() = runBlocking {
+        val http=api.http()
+        val target=mockk<ProxyHttpRequestResponse>(relaxed=true)
+        val request=mockk<HttpRequest>(relaxed=true)
+        val wire=byteArrayOf(0x50,0x4e,0x47,0,0x80.toByte(),0xff.toByte())
+        val reply=byteArrayOf(0xff.toByte(),0xd8.toByte(),0,0xfe.toByte())
+        val requestBytes=mockk<ByteArray>();val responseBytes=mockk<ByteArray>()
+        every { requestBytes.bytes } returns wire;every { requestBytes.length() } returns wire.size
+        every { responseBytes.bytes } returns reply
+        every { target.id() } returns 34;every { api.proxy().history() } returns listOf(target)
+        every { target.finalRequest() } returns request
+        every { request.toString() } returns "display-with-replacement-characters"
+        every { request.toByteArray() } returns requestBytes
+        every { request.url() } returns "http://fixture.invalid/upload"
+        every { request.httpService().host() } returns "fixture.invalid"
+        every { request.httpService().port() } returns 80;every { request.httpService().secure() } returns false
+        every { target.time() } returns ZonedDateTime.parse("2026-11-06T00:00:00Z")
+        every { target.hasResponse() } returns true
+        every { target.originalResponse().toString() } returns "display-response"
+        every { target.originalResponse().toByteArray() } returns responseBytes
+        val parameter=mockk<burp.api.montoya.http.message.params.ParsedHttpParameter>()
+        val range=mockk<burp.api.montoya.core.Range>()
+        every { parameter.name() } returns "filename"
+        every { parameter.type() } returns burp.api.montoya.http.message.params.HttpParameterType.MULTIPART_ATTRIBUTE
+        every { parameter.valueOffsets() } returns range
+        every { range.startIndexInclusive() } returns 3;every { range.endIndexExclusive() } returns 6
+        every { request.parameters() } returns listOf(parameter)
+        val result=Json.parseToJsonElement(client.callTool("get_proxy_http_request_by_id",
+            mapOf("requestId" to 34,"includeBinary" to true,"includeParameters" to true)).expectTextContent()).jsonObject["proxy"]!!.jsonObject
+        assertArrayEquals(wire,java.util.Base64.getDecoder().decode(result["requestBase64"]!!.jsonPrimitive.content))
+        assertArrayEquals(reply,java.util.Base64.getDecoder().decode(result["responseBase64"]!!.jsonPrimitive.content))
+        val metadata=result["parameters"]!!.jsonArray.single().jsonObject
+        assertEquals("MULTIPART_ATTRIBUTE",metadata["type"]!!.jsonPrimitive.content)
+        assertEquals(3,metadata["valueStart"]!!.jsonPrimitive.int);assertEquals(6,metadata["valueEnd"]!!.jsonPrimitive.int)
+        verify(exactly=0) { parameter.value() }
+        verify(exactly=0) { http.sendRequest(any<HttpRequest>()) }
+    }
+
+    @Test
+    fun `direct Logger ID lookup defaults to unsupported UI rather than returning an equal capture ID`() = runBlocking {
+        val http = api.http()
+        val handler = slot<burp.api.montoya.http.handler.HttpHandler>()
+        verify { http.registerHttpHandler(capture(handler)) }
+        val history = handler.captured as LoggerHttpHistory
+        history.recordRequest(42, "REPEATER", net.portswigger.mcp.schema.HttpService("localhost", 3000, false), "http://localhost:3000/test", "request-42", null)
+        val unsupported = Json.parseToJsonElement(client.callTool("get_logger_http_request_by_id", mapOf("requestId" to 1)).expectTextContent()).jsonObject
+        assertEquals("UNSUPPORTED_UI_ID", unsupported["status"]!!.jsonPrimitive.content)
+        val found = Json.parseToJsonElement(client.callTool("get_logger_http_request_by_id", mapOf("requestId" to 42, "idType" to "HTTP_MESSAGE_ID", "captureId" to history.status().captureId)).expectTextContent()).jsonObject
+        assertEquals("FOUND", found["status"]!!.jsonPrimitive.content)
+        assertEquals("request-42", found["logger"]!!.jsonObject["request"]!!.jsonPrimitive.content)
+        assertTrue(client.callTool("get_logger_http_request_by_id", mapOf("requestId" to 1, "idType" to "MCP_CAPTURE_ID")).expectTextContent().startsWith("Error:"))
+        verify(exactly = 0) { http.sendRequest(any<HttpRequest>()) }
+    }
+
+    @Test
+    fun `direct ID tools preserve independent history access denial`() = runBlocking {
+        mockkObject(config)
+        every { config.requireDataAccessApproval } returns true
+        every { config.alwaysAllowHttpHistory } returns true
+        every { config.alwaysAllowLoggerHistory } returns false
+        val previous = net.portswigger.mcp.security.DataAccessSecurity.approvalHandler
+        val approval = mockk<net.portswigger.mcp.security.DataAccessApprovalHandler>()
+        coEvery { approval.requestDataAccess(any(), any()) } returns false
+        net.portswigger.mcp.security.DataAccessSecurity.approvalHandler = approval
+        try {
+            val denied = Json.parseToJsonElement(client.callTool("get_logger_http_request_by_id", mapOf("requestId" to 1)).expectTextContent()).jsonObject
+            assertEquals("ACCESS_DENIED", denied["status"]!!.jsonPrimitive.content)
+            coVerify(exactly = 1) { approval.requestDataAccess(net.portswigger.mcp.security.DataAccessType.LOGGER_HISTORY, config) }
+            every { config.alwaysAllowHttpHistory } returns false
+            val proxyDenied = Json.parseToJsonElement(client.callTool("get_proxy_http_request_by_id", mapOf("requestId" to 1)).expectTextContent()).jsonObject
+            assertEquals("ACCESS_DENIED", proxyDenied["status"]!!.jsonPrimitive.content)
+        } finally { net.portswigger.mcp.security.DataAccessSecurity.approvalHandler = previous; unmockkObject(config) }
+    }
+    // << mniwa
+
+    // >> 20261009 mniwa Exercise Logger pagination and filtering through MCP using the registered HTTP handler.
+    @Test
+    fun `logger tools expose cross tool metadata and apply filtering before pagination`() = runBlocking {
+        val handler = slot<burp.api.montoya.http.handler.HttpHandler>()
+        val http = api.http()
+        verify { http.registerHttpHandler(capture(handler)) }
+        val history = handler.captured as LoggerHttpHistory
+        val service = net.portswigger.mcp.schema.HttpService("localhost", 3000, false)
+        history.recordRequest(20, "PROXY", service, "http://localhost:3000/a", "GET /a HTTP/1.1\r\nHost: localhost:3000\r\n\r\n", null)
+        history.recordRequest(21, "SCANNER", service, "http://localhost:3000/b", "POST /b HTTP/1.1\r\nHost: localhost:3000\r\n\r\nbody", null)
+        history.recordResponse(21, "SCANNER", service, "http://localhost:3000/b", "POST /b HTTP/1.1\r\nHost: localhost:3000\r\n\r\nbody", "HTTP/1.1 200 OK\r\n\r\nsaved-result", null)
+        val first = Json.parseToJsonElement(client.callTool("get_logger_http_history", mapOf("count" to 1, "offset" to 0)).expectTextContent()).jsonObject
+        assertEquals("PROXY", first["tool"]!!.jsonPrimitive.content)
+        val filtered = Json.parseToJsonElement(client.callTool("get_logger_http_history_regex", mapOf("regex" to "saved-result", "count" to 1, "offset" to 0)).expectTextContent()).jsonObject
+        assertEquals("SCANNER", filtered["tool"]!!.jsonPrimitive.content)
+        assertEquals("RESPONSE_RECEIVED", filtered["responseState"]!!.jsonPrimitive.content)
+        assertEquals("Reached end of items", client.callTool("get_logger_http_history_regex", mapOf("regex" to "SCANNER", "count" to 1, "offset" to 1)).expectTextContent())
+        assertTrue(client.callTool("get_logger_http_history", mapOf("count" to 0, "offset" to 0)).expectTextContent().startsWith("Error:"))
+        assertTrue(client.callTool("get_logger_http_history_regex", mapOf("regex" to "[", "count" to 1, "offset" to 0)).expectTextContent().startsWith("Error:"))
+        val status = Json.parseToJsonElement(client.callTool("get_logger_history_status", emptyMap()).expectTextContent()).jsonObject
+        assertEquals("MCP_HTTP_HANDLER", status["source"]!!.jsonPrimitive.content)
+        verify(exactly = 0) { http.sendRequest(any<HttpRequest>()) }
+    }
+    // << mniwa
+
+    @Test
+    fun `CPH workflow descriptions expose native Target scope independently from handler and rule scope`() = runBlocking {
+        val tools = client.listTools().associateBy { it.name }
+        for (name in listOf("set_project_options", "generate_cph_import_config", "import_cph_config", "get_cph_config")) {
+            val description = tools.getValue(name).description!!
+            assertTrue(description.contains("Burp Target scope is separate from Session Handling Rule URL scope"), name)
+            assertTrue(description.contains("target.scope may be top-level, outside project_options"), name)
+            assertTrue(description.contains("prepared destination URL including any literal {{placeholder}}"), name)
+            assertTrue(description.contains("preserve existing entries"), name)
+            assertTrue(description.contains("at least five MCP workflow sends"), name)
+            assertFalse(description.contains("testing.md"), name)
+            assertFalse(description.contains("payload-stored-34"), name)
+        }
+        val suite = api.burpSuite()
+        val http = api.http()
+        verify(exactly = 0) { suite.importProjectOptionsFromJson(any<String>()) }
+        verify(exactly = 0) { http.sendRequest(any<HttpRequest>()) }
+    }
+
+    @Test
+    fun `macro description explains explicit extraction indexes after adding prerequisites`() = runBlocking {
+        val description=client.listTools().single { it.name=="set_project_options" }.description!!
+        assertTrue(description.contains("Omitting prior_response_index selects response item 0, never the nearest earlier response"))
+        assertTrue(description.contains("After inserting or moving macro items, update every affected prior_response_index"))
+        assertFalse(description.contains("not the nearest earlier matching response"))
+        val suite=api.burpSuite();val http=api.http()
+        verify(exactly=0) { suite.importProjectOptionsFromJson(any<String>()) }
+        verify(exactly=0) { http.sendRequest(any<HttpRequest>()) }
+    }
+
+    @Test
+    fun `CPH extraction guidance and generated configuration use Python named capture syntax`() = runBlocking {
+        val description = client.listTools().single { it.name == "generate_cph_import_config" }.description!!
+        assertTrue(description.contains("Python-style named capture group such as (?P<uuid>...)"))
+        assertTrue(description.contains("Use this syntax in single_expression and cached_expression"))
+        assertTrue(description.contains("Java-style named capture groups are not supported"))
+        assertFalse(description.contains("or (?<uuid>...)"))
+
+        val expression = "token=(?P<token>[A-Za-z0-9+]+)"
+        val args = mapOf(
+            "tabName" to "token_syntax", "dynamic" to true,
+            "issuerHost" to "example.invalid", "issuerPort" to 8000,
+            "singleRequest" to "GET /token HTTP/1.1\r\nHost: example.invalid:8000\r\n\r\n",
+            "singleResponse" to "HTTP/1.1 200 OK\r\n\r\ntoken=a+b",
+            "singleExtractExpression" to expression,
+            "modifyScopeExpression" to "cphtarget:token_syntax",
+            "matchExpression" to "{{token}}", "replacementExpression" to "\\g<token>",
+            "includeOptions" to false
+        )
+        val handler = Json.parseToJsonElement(client.callTool("generate_cph_import_config", args).expectTextContent())
+            .jsonObject.getValue("token_syntax").jsonObject
+        assertEquals(expression, handler.getValue("single_expression").jsonArray[1].jsonPrimitive.content)
+        assertEquals("\\g<token>", handler.getValue("static_expression").jsonArray[1].jsonPrimitive.content)
+        assertTrue(client.callTool("generate_cph_import_config", args +
+            ("singleExtractExpression" to "token=(?<token>[A-Za-z0-9+]+)")).expectTextContent().startsWith("Error:"))
+        val http = api.http()
+        val suite = api.burpSuite()
+        verify(exactly = 0) { http.sendRequest(any<HttpRequest>()) }
+        verify(exactly = 0) { suite.importProjectOptionsFromJson(any<String>()) }
+    }
+
+    @Test
+    fun `cached CPH configuration carries extraction and source tab without a second fetch`() = runBlocking {
+        val regex = "\"id\"\\s*:\\s*(?P<id>\\d+)"
+        val text = client.callTool("generate_cph_import_config", mapOf(
+            "tabName" to "cleanup", "enabled" to true, "dynamic" to true,
+            "extractMode" to "cached", "modifyType" to "requests",
+            "issuerHost" to "localhost", "issuerPort" to 3000, "issuerHttps" to false,
+            "singleRequest" to "GET /datainfo HTTP/1.1\r\nHost: localhost:3000\r\n\r\n",
+            "singleResponse" to "HTTP/1.1 200 OK\r\n\r\n{\"id\":3}",
+            "singleExtractExpression" to regex, "singleExtractExpressionIsRegex" to true,
+            "modifyScopeExpression" to "cphtarget:cleanup", "modifyScopeExpressionIsRegex" to false,
+            "matchExpression" to "{{cleanup_id}}", "matchExpressionIsRegex" to false,
+            "replacementExpression" to "\\g<id>", "replacementExpressionIsRegex" to true,
+            "includeOptions" to true, "cachedSelection" to "info_cache"
+        )).expectTextContent()
+        val root = Json.parseToJsonElement(text).jsonObject
+        val handler = root.getValue("cleanup").jsonObject
+        assertEquals("2", handler.getValue("extract_choice_index").jsonPrimitive.content)
+        assertEquals("info_cache", handler.getValue("cached_selection").jsonPrimitive.content)
+        val extraction = handler.getValue("cached_expression") as kotlinx.serialization.json.JsonArray
+        assertEquals("true", extraction[0].jsonPrimitive.content)
+        assertEquals(regex, extraction[1].jsonPrimitive.content)
+        val options = root.values.map { it.jsonObject }.single { "chkbox_scanner" in it }
+        assertEquals("true", options.getValue("chkbox_scanner").jsonPrimitive.content)
+        assertEquals("false", options.getValue("chkbox_proxy").jsonPrimitive.content)
+    }
     
+    @Test
+    fun `static CPH request correlation uses match groups without an extraction request`() = runBlocking {
+        val args = mapOf(
+            "tabName" to "local_headers", "dynamic" to false,
+            "issuerHost" to "localhost", "issuerPort" to 3000,
+            "modifyScopeExpression" to "cphtarget:local_headers",
+            "matchExpression" to "(Header: )(value)", "matchExpressionIsRegex" to true,
+            "replacementExpression" to "\\g<1>\\g<2>", "singleExtractExpression" to "",
+            "includeOptions" to false
+        )
+        val handler = Json.parseToJsonElement(client.callTool("generate_cph_import_config", args).expectTextContent())
+            .jsonObject.getValue("local_headers").jsonObject
+        assertEquals("false", handler.getValue("dynamic_checkbox").jsonPrimitive.content)
+        assertEquals("", handler.getValue("single_request").jsonPrimitive.content)
+        assertEquals(kotlinx.serialization.json.JsonNull, handler.getValue("cached_selection"))
+        assertTrue(client.listTools().single { it.name=="generate_cph_import_config" }.description!!.contains("use JSON null when no cache source is selected"))
+        assertEquals("\\g<1>\\g<2>", (handler.getValue("static_expression") as kotlinx.serialization.json.JsonArray)[1].jsonPrimitive.content)
+        assertTrue(client.callTool("generate_cph_import_config", args + ("dynamic" to true)).expectTextContent().startsWith("Error:"))
+    }
+
     private val client = TestSseMcpClient()
     private val api = mockk<MontoyaApi>(relaxed = true)
     private val serverManager = KtorServerManager(api)
@@ -61,6 +486,9 @@ class ToolsKtTest {
             every { getBoolean("configEditingTooling") } returns true
             every { getBoolean("requireHttpRequestApproval") } returns false
             every { getBoolean("requireDataAccessApproval") } returns false
+            // >> 20261008 mniwa Supply the default credential-filter setting for configuration readback tests.
+            every { getBoolean("filterConfigCredentials") } returns true
+            // << mniwa
             every { getBoolean("_alwaysAllowHttpHistory") } returns false
             every { getBoolean("_alwaysAllowWebSocketHistory") } returns false
             every { getBoolean("_alwaysAllowOrganizer") } returns false
@@ -141,10 +569,12 @@ class ToolsKtTest {
 
         runBlocking {
             var attempts = 0
-            while (!serverStarted && attempts < 30) {
+            // >> 20261014 mniwa Allow ten seconds for the real test server to start under concurrent Burp load without weakening assertions.
+            while (!serverStarted && attempts < 100) {
                 delay(100)
                 attempts++
             }
+            // << mniwa
             if (!serverStarted) throw IllegalStateException("Server failed to start after timeout")
 
             client.connectToServer("http://127.0.0.1:${testPort}")
@@ -495,6 +925,85 @@ class ToolsKtTest {
             
             verify(exactly = 1) { base64Utils.decode(any<String>()) }
         }
+
+        // >> 20261008 mniwa Verify explicit UTF-8 byte dispatch, Unicode round trips, legacy byte strings, and invalid charset rejection.
+        @Test
+        fun `base64 UTF-8 mode preserves Japanese emoji and ASCII text`() = runBlocking {
+            val base64Utils = mockk<Base64Utils>()
+            val utilities = mockk<Utilities>()
+            every { api.utilities() } returns utilities
+            every { utilities.base64Utils() } returns base64Utils
+            mockkStatic(ByteArray::class)
+            try {
+                every { base64Utils.encodeToString(any<ByteArray>()) } answers {
+                    java.util.Base64.getEncoder().encodeToString(firstArg<ByteArray>().getBytes())
+                }
+                every { base64Utils.decode(any<ByteArray>()) } answers {
+                    val raw = java.util.Base64.getDecoder().decode(firstArg<ByteArray>().getBytes())
+                    mockk<ByteArray>().also { bytes -> every { bytes.getBytes() } returns raw }
+                }
+                for (content in listOf("本日の接続担当は、蝶ネクタイのペンギンです。", "ペンギン🐧とお寿司🍣", "test string")) {
+                    val raw = content.toByteArray(Charsets.UTF_8)
+                    val expected = java.util.Base64.getEncoder().encodeToString(raw)
+                    val sourceBytes = mockk<ByteArray>()
+                    val encodedBytes = mockk<ByteArray>()
+                    every { sourceBytes.getBytes() } returns raw
+                    every { encodedBytes.getBytes() } returns expected.toByteArray(Charsets.UTF_8)
+                    every { ByteArray.byteArray(*raw) } returns sourceBytes
+                    every { ByteArray.byteArray(*expected.toByteArray(Charsets.UTF_8)) } returns encodedBytes
+                    val encoded = client.callTool("base64_encode", mapOf("content" to content, "charset" to "UTF-8")).expectTextContent()
+                    assertEquals(expected, encoded)
+                    val decoded = client.callTool("base64_decode", mapOf("content" to encoded, "charset" to "utf-8")).expectTextContent()
+                    assertEquals(content, decoded)
+                }
+                verify(exactly = 3) { base64Utils.encodeToString(any<ByteArray>()) }
+                verify(exactly = 3) { base64Utils.decode(any<ByteArray>()) }
+                verify(exactly = 0) { base64Utils.encodeToString(any<String>()) }
+                verify(exactly = 0) { base64Utils.decode(any<String>()) }
+                for (name in listOf("base64_encode", "base64_decode")) {
+                    val description = client.listTools().single { it.name == name }.description!!
+                    assertTrue(description.contains("UTF-8"))
+                    assertTrue(description.contains("Omit charset"))
+                }
+            } finally {
+                unmockkStatic(ByteArray::class)
+            }
+        }
+
+        @Test
+        fun `base64 default mode preserves Montoya byte string behavior`() = runBlocking {
+            val base64Utils = mockk<Base64Utils>()
+            val utilities = mockk<Utilities>()
+            val bytes = mockk<ByteArray>()
+            val content = "é\u0000"
+            every { api.utilities() } returns utilities
+            every { utilities.base64Utils() } returns base64Utils
+            every { base64Utils.encodeToString(content) } returns "6QA="
+            every { base64Utils.decode("6QA=") } returns bytes
+            every { bytes.toString() } returns content
+            client.callTool("base64_encode", mapOf("content" to content)).expectTextContent("6QA=")
+            client.callTool("base64_decode", mapOf("content" to "6QA=")).expectTextContent(content)
+            verify(exactly = 1) { base64Utils.encodeToString(content) }
+            verify(exactly = 1) { base64Utils.decode("6QA=") }
+            verify(exactly = 0) { base64Utils.encodeToString(any<ByteArray>()) }
+            verify(exactly = 0) { base64Utils.decode(any<ByteArray>()) }
+        }
+
+        @Test
+        fun `base64 tools reject unsupported explicit charsets before invoking utilities`() = runBlocking {
+            val base64Utils = mockk<Base64Utils>()
+            val utilities = mockk<Utilities>()
+            every { api.utilities() } returns utilities
+            every { utilities.base64Utils() } returns base64Utils
+            for (name in listOf("base64_encode", "base64_decode")) {
+                for (charset in listOf("", "UTF8", "UTF-16", " UTF-8 ")) {
+                    val result = client.callTool(name, mapOf("content" to "dGVzdA==", "charset" to charset))
+                    assertTrue(result.expectTextContent().startsWith("Error: charset must be UTF-8 when specified"))
+                }
+            }
+            verify { base64Utils wasNot Called }
+        }
+        // << mniwa
         
         @Test
         fun `generate random string should work properly`() {
@@ -735,6 +1244,28 @@ class ToolsKtTest {
     
     @Nested
     inner class PaginatedToolsTests {
+        @Test fun `proxy regex reports exhausted work as error and remains usable`() = runBlocking {
+            val entry = mockk<ProxyHttpRequestResponse>()
+            val request = mockk<HttpRequest>()
+            every { api.proxy().history() } returns listOf(entry)
+            every { entry.finalRequest() } returns request
+            every { request.toString() } returns "x".repeat(10_000)
+            every { entry.hasResponse() } returns false
+            mockkStatic("net.portswigger.mcp.schema.SerializationKt")
+            every { entry.toSerializableForm() } returns HttpRequestResponse("captured-request", "", "")
+            val error = client.callTool("get_proxy_http_history_regex", mapOf(
+                "regex" to "(?s)(?=.*missing)(?=.*scope)", "count" to 1, "offset" to 0))
+            assertEquals(true, requireNotNull(error).isError)
+            assertTrue(error.expectTextContent().contains("REGEX_WORK_LIMIT"))
+            val found = client.callTool("get_proxy_http_history_regex", mapOf(
+                "regex" to "^x", "count" to 1, "offset" to 0))
+            assertFalse(requireNotNull(found).isError == true)
+            assertTrue(found.expectTextContent().contains("captured-request"))
+            val page = client.callTool("get_proxy_http_history_regex", mapOf(
+                "regex" to "^x", "count" to 1, "offset" to 1))
+            assertEquals("Reached end of items", page.expectTextContent())
+        }
+
         @Test
         fun `get proxy history should paginate properly`() {
             val proxy = mockk<Proxy>()
@@ -803,18 +1334,20 @@ class ToolsKtTest {
         }
 
         @Test
-        fun `get proxy history should return valid size limited JSON`() {
+        // >> 20261009 mniwa Verify that history JSON preserves complete requests and responses.
+        fun `get proxy history should preserve full messages in valid JSON`() {
             val proxy = mockk<Proxy>()
             val historyItem = mockk<ProxyHttpRequestResponse>()
             every { api.proxy() } returns proxy
             every { proxy.history() } returns listOf(historyItem)
 
             mockkStatic("net.portswigger.mcp.schema.SerializationKt")
-            every { historyItem.toSerializableForm() } returns HttpRequestResponse(
+            val original = HttpRequestResponse(
                 request = "GET / HTTP/1.1\r\nX-Long: ${"\\\"😀".repeat(2_000)}",
                 response = "HTTP/1.1 200 OK\r\n\r\n${"😀".repeat(3_000)}",
                 notes = "keep me"
             )
+            every { historyItem.toSerializableForm() } returns original
 
             runBlocking {
                 val text = client.callTool(
@@ -822,17 +1355,152 @@ class ToolsKtTest {
                 ).expectTextContent()
                 val item = Json.parseToJsonElement(text).jsonObject
 
-                assertTrue(text.length <= 5_000)
+                assertTrue(text.length > 5_000)
                 assertEquals(setOf("request", "response", "notes"), item.keys)
-                assertTrue(item.getValue("request").jsonPrimitive.content.endsWith("... (truncated)"))
-                assertTrue(item.getValue("response").jsonPrimitive.content.endsWith("... (truncated)"))
+                assertEquals(original.request, item.getValue("request").jsonPrimitive.content)
+                assertEquals(original.response, item.getValue("response").jsonPrimitive.content)
                 assertEquals("keep me", item.getValue("notes").jsonPrimitive.content)
             }
         }
+        // << mniwa
     }
     
     @Nested
     inner class CollaboratorToolsTests {
+    @Test fun `unsupported scan config fails before permission and native start`() = runBlocking {
+        val scanner=api.scanner()
+        val http=api.http()
+        val result=client.callTool("start_active_scan",mapOf("request" to "GET / HTTP/1.1\r\nHost: fixture.invalid\r\n\r\n",
+            "host" to "fixture.invalid","port" to 80,"protocol" to "http","config" to mapOf("audit" to true)))
+        assertTrue(result!!.isError==true)
+        assertTrue(result.expectTextContent().contains("UNSUPPORTED_ACTIVE_SCAN_CONFIG"))
+        verify(exactly=0) { scanner.startAudit(any()) }
+        verify(exactly=0) { http.sendRequest(any<HttpRequest>()) }
+    }
+    @Test fun `payload preflight tool exposes real workbook plan without scanner or HTTP access`() = runBlocking {
+        val workbook = System.getenv("PAYLOAD_TEST_WORKBOOK")
+        val exported = System.getenv("PAYLOAD_TEST_CATALOG")
+        org.junit.jupiter.api.Assumptions.assumeTrue(workbook != null && exported != null)
+        val root = java.nio.file.Files.createTempDirectory("payload-preflight-tool")
+        try {
+            val service = mockk<burp.api.montoya.http.HttpService>()
+            val parsed = mockk<HttpRequest>(relaxed = true)
+            every { burp.api.montoya.http.HttpService.httpService("localhost", 80, false) } returns service
+            every { HttpRequest.httpRequest(service, any<String>()) } returns parsed
+            every { parsed.hasHeader(any<String>()) } returns false
+            every { parsed.headerValue("Content-Type") } returns null
+            every { parsed.parameters() } returns emptyList()
+            every { parsed.toByteArray().bytes } returns "GET /fixture HTTP/1.1\r\nHost: localhost\r\n\r\n".toByteArray()
+            clearMocks(api, answers = false, recordedCalls = true, childMocks = false)
+            val result = client.callTool("plan_payload_scan", mapOf("host" to "localhost", "port" to 80,
+                "protocol" to "http", "request" to "GET /fixture HTTP/1.1\r\nHost: localhost\r\n\r\n",
+                "payloadProfile" to mapOf("tier" to "medium", "catalogPath" to exported,
+                    "workbookPath" to workbook, "evidenceRoot" to root.toString())))
+            assertFalse(requireNotNull(result).isError == true, result.expectTextContent())
+            val summary = Json.parseToJsonElement(result.expectTextContent()).jsonObject
+            assertEquals("458", summary["selectedPayloads"]!!.jsonPrimitive.content)
+            assertEquals("8", summary["readyCandidates"]!!.jsonPrimitive.content)
+            assertEquals("false", summary["wirePlanReady"]!!.jsonPrimitive.content)
+            java.nio.file.Files.list(root).use { assertEquals(0L, it.count()) }
+            verify(exactly = 0) { api.scanner() }
+            verify(exactly = 0) { api.http() }
+        } finally { java.nio.file.Files.delete(root) }
+    }
+
+
+        // >> 20261008 mniwa Verify that the published MCP contract requires full replacement audits after configuration failures.
+        @Test
+        fun `published scan workflow tools require cancellation and a new full audit after invalid settings`() = runBlocking {
+            val tools = client.listTools().associateBy { it.name }
+            for (name in listOf("set_project_options", "start_active_scan", "get_active_scan_status")) {
+                val description = tools.getValue(name).description!!
+                assertTrue(description.contains("Cancel the affected audit through Burp UI"), name)
+                assertTrue(description.contains("new full ActiveScan from the beginning"), name)
+                assertTrue(description.contains("Pause -> edit -> Resume does not repeat earlier checks"), name)
+                assertTrue(description.contains("at least five MCP workflow test sends"), name)
+                assertTrue(description.contains("successful Extensions/MCP tests do not prove Scanner"), name)
+                assertTrue(description.contains("Ordinary user-requested Pause/Resume with unchanged valid settings"), name)
+                assertFalse(description.contains("testing.md"), name)
+            }
+        }
+        // << mniwa
+
+        @Test
+        fun `legacy scan tools are absent while Montoya scan tools remain available`() = runBlocking {
+            val tools = client.listTools().map { it.name }.toSet()
+            for (name in listOf("start_cancelable_active_scan", "get_cancelable_scan_capabilities",
+                "get_cancelable_active_scan_status", "cancel_active_scan")) {
+                assertFalse(name in tools, name)
+            }
+            for (name in listOf("start_active_scan", "get_active_scan_status", "get_scanner_issues")) {
+                assertTrue(name in tools, name)
+            }
+        }
+        @Test
+        fun `start scan returns tracked identity after uncertain submission and observation failure`() = runBlocking {
+            val native = mockk<burp.api.montoya.scanner.audit.Audit>(relaxed = true)
+            val scanner = mockk<burp.api.montoya.scanner.Scanner>()
+            val request = mockk<HttpRequest>()
+            val service = mockk<burp.api.montoya.http.HttpService>()
+            val auditConfig = mockk<burp.api.montoya.scanner.AuditConfiguration>()
+            mockkStatic(burp.api.montoya.scanner.AuditConfiguration::class)
+            try {
+                every { burp.api.montoya.http.HttpService.httpService(any<String>(), any<Int>(), any<Boolean>()) } returns service
+                every { HttpRequest.httpRequest(service, any<String>()) } returns request
+                every { request.method() } returns "GET"
+                every { request.parameters() } returns emptyList()
+                every { api.scanner() } returns scanner
+                every { burp.api.montoya.scanner.AuditConfiguration.auditConfiguration(any()) } returns auditConfig
+                every { scanner.startAudit(auditConfig) } returns native
+                every { native.addRequest(request) } throws IllegalStateException("acceptance unknown")
+                every { native.statusMessage() } returns "finished"
+                val args = mapOf("host" to "localhost", "port" to 80, "protocol" to "http", "request" to "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+                val started = Json.parseToJsonElement(client.callTool("start_active_scan", args).expectTextContent()).jsonObject
+                assertEquals("submission_outcome_unknown", started["status"]!!.jsonPrimitive.content)
+                val id = started["auditId"]!!.jsonPrimitive.content
+                assertNotNull(started["submissionError"])
+                val trackedResponse = Json.parseToJsonElement(client.callTool("get_active_scan_status", mapOf("auditId" to id)).expectTextContent()).jsonObject
+                assertEquals("true", trackedResponse["success"]!!.jsonPrimitive.content)
+                val tracked = trackedResponse["audit"]!!.jsonObject
+                assertEquals(kotlinx.serialization.json.JsonNull, tracked["completed"])
+                assertEquals("true", tracked["nativeCompleted"]!!.jsonPrimitive.content)
+                verify(exactly = 1) { native.addRequest(request) }
+
+                every { native.addRequest(request) } just runs
+                every { native.statusMessage() } throws IllegalStateException("observation failed")
+                val observation = Json.parseToJsonElement(client.callTool("start_active_scan", args).expectTextContent()).jsonObject
+                assertEquals("submitted_status_unavailable", observation["status"]!!.jsonPrimitive.content)
+                assertNotNull(observation["auditId"])
+                assertEquals(kotlinx.serialization.json.JsonNull, observation["auditStatusMessage"])
+                verify(exactly = 2) { native.addRequest(request) }
+                verify(exactly = 0) { native.delete() }
+            } finally { unmockkStatic(burp.api.montoya.scanner.AuditConfiguration::class) }
+        }
+        // >> 20261014 mniwa Validate registered status-tool behavior and ETA guidance through MCP without starting a scan.
+        @Test
+        fun `active scan status workflow preserves empty and lost handle semantics with ETA guidance`() = runBlocking {
+            val listed = Json.parseToJsonElement(client.callTool("get_active_scan_status", emptyMap()).expectTextContent()).jsonObject
+            assertEquals("true", listed["success"]!!.jsonPrimitive.content)
+            assertEquals("[]", listed["audits"].toString())
+            val missing = Json.parseToJsonElement(client.callTool("get_active_scan_status", mapOf("auditId" to "unknown")).expectTextContent()).jsonObject
+            assertEquals("AUDIT_NOT_TRACKED", missing["errorCode"]!!.jsonPrimitive.content)
+            val description = client.listTools().single { it.name == "get_active_scan_status" }.description!!
+            assertTrue(description.contains("timeEstimate"))
+            assertTrue(description.contains("no additional calibration scans"))
+            assertTrue(description.contains("not statistical confidence intervals"))
+            val supplied = mapOf("requestsPerInsertionPoint" to 40.0, "basis" to "Observed check evidence", "workflowSeconds" to 15.0, "effectiveConcurrency" to 1.0)
+            val withModel = Json.parseToJsonElement(client.callTool("get_active_scan_status", mapOf("auditId" to "unknown", "workload" to supplied)).expectTextContent()).jsonObject
+            assertEquals("AUDIT_NOT_TRACKED", withModel["errorCode"]!!.jsonPrimitive.content)
+            // >> 20261014 mniwa Verify default workload decoding through MCP and reject invalid timing before starting an audit.
+            assertTrue(description.contains("defaults to 34"))
+            val defaults = Json.parseToJsonElement(client.callTool("get_active_scan_status", mapOf("auditId" to "unknown", "workload" to mapOf("workflowSeconds" to 2.0))).expectTextContent()).jsonObject
+            assertEquals("AUDIT_NOT_TRACKED", defaults["errorCode"]!!.jsonPrimitive.content)
+            val invalidStart = client.callTool("start_active_scan", mapOf("host" to "localhost", "port" to 80, "protocol" to "http", "request" to "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n", "workload" to mapOf("workflowSeconds" to -1.0))).expectTextContent()
+            assertTrue(invalidStart.startsWith("Error: workflowSeconds must be finite and positive"))
+            // << mniwa
+            assertTrue(client.callTool("get_active_scan_status", mapOf("workload" to supplied)).expectTextContent().startsWith("Error: auditId is required"))
+        }
+        // << mniwa
         private val collaborator = mockk<Collaborator>()
         private val collaboratorClient = mockk<CollaboratorClient>()
         private val collaboratorServer = mockk<CollaboratorServer>()

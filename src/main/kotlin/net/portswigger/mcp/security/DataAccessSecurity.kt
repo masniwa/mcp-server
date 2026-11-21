@@ -7,7 +7,9 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 enum class DataAccessType() {
-    HTTP_HISTORY(), WEBSOCKET_HISTORY(), ORGANIZER();
+    // >> 20261009 mniwa Require separate consent for cross-tool Logger capture rather than widening Proxy history permission.
+    HTTP_HISTORY(), WEBSOCKET_HISTORY(), ORGANIZER(), LOGGER_HISTORY();
+    // << mniwa
 }
 
 interface DataAccessApprovalHandler {
@@ -21,20 +23,23 @@ class SwingDataAccessApprovalHandler : DataAccessApprovalHandler {
         return suspendCoroutine { continuation ->
             SwingUtilities.invokeLater {
                 val accessTypeName = when (accessType) {
-                    DataAccessType.HTTP_HISTORY -> "HTTP history"
-                    DataAccessType.WEBSOCKET_HISTORY -> "WebSocket history"
-                    DataAccessType.ORGANIZER -> "Organizer items"
+                    DataAccessType.HTTP_HISTORY -> "HTTP履歴"
+                    DataAccessType.WEBSOCKET_HISTORY -> "WebSocket履歴"
+                    DataAccessType.ORGANIZER -> "Organizerの項目"
+                    // >> 20261009 mniwa Identify the broader cross-tool HTTP capture in the approval dialog.
+                    DataAccessType.LOGGER_HISTORY -> "MCP LoggerのHTTP記録（全ツール）"
+                    // << mniwa
                 }
 
                 val message = buildString {
-                    appendLine("An MCP client is requesting access to your Burp Suite $accessTypeName.")
+                    appendLine("MCPクライアントがBurp Suiteの$accessTypeName へのアクセスを要求しています。")
                     appendLine()
-                    appendLine("This may include sensitive data from previous web sessions.")
-                    appendLine("Choose how you would like to respond:")
+                    appendLine("過去のWebセッションの機密情報が含まれる場合があります。")
+                    appendLine("許可する範囲を選択してください。")
                 }
 
                 val options = arrayOf(
-                    "Allow Once", "Always Allow $accessTypeName", "Deny"
+                    "今回だけ許可", "$accessTypeName を常に許可", "拒否"
                 )
 
                 val burpFrame = findBurpFrame()
@@ -53,6 +58,9 @@ class SwingDataAccessApprovalHandler : DataAccessApprovalHandler {
                             DataAccessType.HTTP_HISTORY -> config.alwaysAllowHttpHistory = true
                             DataAccessType.WEBSOCKET_HISTORY -> config.alwaysAllowWebSocketHistory = true
                             DataAccessType.ORGANIZER -> config.alwaysAllowOrganizer = true
+                            // >> 20261009 mniwa Persist only the independently granted Logger access permission.
+                            DataAccessType.LOGGER_HISTORY -> config.alwaysAllowLoggerHistory = true
+                            // << mniwa
                         }
                         continuation.resume(true)
                     }
@@ -73,6 +81,8 @@ object DataAccessSecurity {
     suspend fun checkDataAccessPermission(
         accessType: DataAccessType, config: McpConfig
     ): Boolean {
+        // Quick is an operator-selected installed profile, never a tool argument.
+        if(config.diagnosticManaged && config.diagnosticQuick && accessType in setOf(DataAccessType.HTTP_HISTORY,DataAccessType.LOGGER_HISTORY)) return true
         if (!config.requireDataAccessApproval) {
             return true
         }
@@ -81,6 +91,9 @@ object DataAccessSecurity {
             DataAccessType.HTTP_HISTORY -> config.alwaysAllowHttpHistory
             DataAccessType.WEBSOCKET_HISTORY -> config.alwaysAllowWebSocketHistory
             DataAccessType.ORGANIZER -> config.alwaysAllowOrganizer
+            // >> 20261009 mniwa Do not reuse an existing Proxy history grant for Logger traffic.
+            DataAccessType.LOGGER_HISTORY -> config.alwaysAllowLoggerHistory
+            // << mniwa
         }
 
         if (isAlwaysAllowed) {

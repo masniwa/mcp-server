@@ -9,7 +9,8 @@ import kotlin.reflect.KProperty
 
 private const val TARGET_SEPARATOR = "\n"
 
-class McpConfig(storage: PersistedObject, private val logging: Logging) {
+class McpConfig(storage: PersistedObject, private val logging: Logging, val diagnosticManaged:Boolean=false,
+                val diagnosticQuick:Boolean=false) {
 
     var enabled by storage.boolean(true)
     var configEditingTooling by storage.boolean(false)
@@ -47,6 +48,18 @@ class McpConfig(storage: PersistedObject, private val logging: Logging) {
                 notifyDataAccessChanged()
             }
         }
+
+    // >> 20261009 mniwa Store a separate Logger history grant with the existing data-access listener lifecycle.
+    private var _alwaysAllowLoggerHistory by storage.boolean(false)
+    var alwaysAllowLoggerHistory: Boolean
+        get() = _alwaysAllowLoggerHistory
+        set(value) {
+            if (_alwaysAllowLoggerHistory != value) {
+                _alwaysAllowLoggerHistory = value
+                notifyDataAccessChanged()
+            }
+        }
+    // << mniwa
 
     var filterConfigCredentials by storage.boolean(true)
 

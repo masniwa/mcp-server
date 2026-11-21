@@ -1,4 +1,7 @@
 .gradle
+/runtime/
+/verification/archives/
+/scripts/tests/__pycache__/
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/

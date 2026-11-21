@@ -1,0 +1,58 @@
+package net.portswigger.mcp.jobs
+
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.*
+import net.portswigger.diagnosis.contract.*
+import net.portswigger.diagnosis.runner.JobDrafts
+import net.portswigger.mcp.tools.mcpTool
+
+@Serializable data class DiagnosticDraft(val action: String, val draftId: String = "",
+    val proposalJson: String? = null, val baselineExecutionId: String? = null,
+    val nextTargetId: String? = null, val informationNeeded: List<String> = emptyList())
+
+internal const val DRAFT_PROMOTION_GUIDANCE = """For look-ahead planning use diagnostic_draft, not propose, while another job is scanning. A draft is a separate immutable STATIC_CHECKED record, never an execution, approval or runtime validation. After the preceding job completes its controls, cleanup review and settings restoration and the context is idle, call propose with a NEW executionId, draftId and exact draftDigest returned by diagnostic_draft; omit proposalJson. The service verifies original input files/secret generations, freezes inputs and re-runs JobCompiler against the CURRENT baseline. The resulting planDigest may differ from staticPlanDigest; draftOrigin reports baselineChangedSinceDraft. Inspect the final plan, perform the normal human-approved prepare, review all actual evidence, then execute with the new validationDigest. Never use draftDigest as validationDigest or reuse a draft's baseline for restoration. Busy promotion fails with BURP_CONTEXT_BUSY. Retry timed-out propose using the same executionId and operationId; never submit a second execution automatically. Direct propose with proposalJson remains supported when idle. Optional draftId/draftDigest are accepted only together on propose without proposalJson.
+
+"""
+
+internal const val LOOK_AHEAD_GUIDANCE = """Required next-target work while an audit runs:
+Before each NEW execute, call diagnostic_job action=plan_next with the current executionId and nextTargetsJson containing the remaining targets in the user's order. Each entry is {taskId,jobId,endpoint:{scheme,host,port,path},sourceId,sourceRequestSha256}; identities and the exact observed source SHA256 must come from this Project's HTTP evidence. Use [] only when the user actually has no remaining target. Missing declarations refuse a new execution; do not claim last-target merely to bypass this step. The declaration is planning metadata, not permission to send or start another target. The same declaration is idempotent and cannot be silently replaced.
+After current Scan start, prioritize agentNextAction and lookAheadPlanning in status/operation responses over routine status-only polling when no urgent native control or approval is pending. Build the next target's complete Macro/Rule/CPH plan from its observed HTTP while the current audit runs. Do not leave this work as an analysis note. Keep native monitoring as needed; background execution already observes the current audit. No next settings, test sends, imports, approvals or scans may be applied during the current workflow.
+Submit a completed next plan using diagnostic_draft action=submit_next with baselineExecutionId=current executionId, nextTargetId=declared taskId, a new draftId and full proposalJson. The server binds its jobId and reflection source ID/hash/endpoint to the declared target and automatically runs the SAME JobDrafts.validate compiler in an independent thread when the current execution is RUNNING in this worker epoch. Do not also call ordinary validate merely to cause that queued check. Observe lookAheadPlanning until the actual draftId/draftDigest is STATIC_CHECKED; queued, checking, failed and information-needed never mean passed. Static failures preserve their error; correct the proposal and submit a new revision with a new draftId. A STATIC_CHECKED target that has not been formally registered can also be corrected with a higher revision and an unused draftId, including after fresh-baseline promotion is rejected. The previous immutable draft, digest and success history remain available, but only the latest bound successful proposal can be promoted. After the parent's running window ends, explicitly validate the corrected proposal against that stored parent baseline, then submit_next the identical successful draft/proposal; formal registration still rechecks the latest baseline. Replacing a CHECKING, currently promoting, or already formally registered target is refused. On LOOKAHEAD_PROMOTION_IN_PROGRESS, observe the same formal operation before revising; do not race or recreate it. Identical submissions remain idempotent. Existing drafts remain immutable.
+If current baseline values or other observations are unavailable, first construct the portions that can be established, then call diagnostic_draft action=needs_information with baselineExecutionId, nextTargetId and informationNeeded=[nonblank descriptions of exact missing observations and completed work]. Omit draftId/proposalJson for this action. Continue resolvable planning instead of treating one missing observation as a reason to stop all configuration work. This records an unmet requirement, never a passing partial proposal. The server does not contain an AI model and cannot synthesize settings itself: the existing AI must create and submit them. This mechanism exposes omissions and automatically executes submitted static checks; it is not automatic AI configuration generation.
+The current audit is never stopped, changed or delayed by a failed look-ahead check. Old-epoch or ended parents are not silently treated as live. If the active window was missed, explicitly use ordinary diagnostic_draft validate against that stored parent baseline, then submit_next with that identical successful draft/proposal to bind it. Such late validation is reported separately and must not be claimed as performed during the Scan. A declared target can be promoted only with its bound successful draftId/draftDigest, after current traffic/controls/restoration finish; the latest baseline, normal human approval and five-workflow validation remain mandatory. No-next declarations, pending work and failure reasons persist across MCP server restart; an unknown check is not automatically replayed as target traffic.
+
+"""
+
+fun Server.registerDiagnosticDraftTool(drafts: JobDrafts,lookAhead:LookAheadPlanner) {
+    mcpTool<DiagnosticDraft>(LOOK_AHEAD_GUIDANCE + """Statically check a NEXT diagnostic configuration without applying it, sending target traffic, freezing files, starting scans or requesting approval. This planning-only tool is allowed while another managed Scan or preparation is active. It stores draft metadata separately from execution/approval records and does not acquire the Burp context or advance execution fences. Existing JobCompiler performs the same structural/schema, observed-source/hash, scope, Macro reference, CPH dependency/order and stored-response layout checks used by formal registration.
+Actions: validate requires draftId (1..100 letters/digits/underscore/hyphen) and complete proposalJson (JobProposal below). During a Scan supply baselineExecutionId identifying the current or another known registered job: only that job's stored PRE-APPLY baseline is read, with no call to live Burp/CPH or the worker execution monitor. Do not use a current applied Scan configuration as the next job's restoration baseline. When no managed context is owned, baselineExecutionId may be omitted to capture a read-only idle baseline; omission while busy fails DRAFT_BASELINE_EXECUTION_REQUIRED. Historical baselines are assumptions, not evidence about current credentials or capabilities. get requires only draftId and returns its saved static report. IDs are immutable: identical validate calls are idempotent; editing a proposal or baseline reference requires a new draftId and changed proposals should use a new revision. Failed validation does not create a passing draft. Draft and formal execution IDs are separate namespaces.
+Results include state=STATIC_CHECKED, draftDigest, proposalDigest, staticPlanDigest, baselineDigest, variantCount, expandedEndpointCount, executable=false, semanticReviewRequired=true and inputsFrozen=false. Static acceptance proves structure only. Native parameter inventory completeness and inherited automatic-input conflicts are deferred to formal registration; a draft never proves full input coverage. Regex extraction against runtime responses, authentication success/expiry, native settings roundtrip, actual CPH substitutions, payload wire behavior and business cleanup are NOT verified. All referenced workbook/catalog paths must already have inputDigests for static compilation; this action never opens those files or checks their contents or secret generations. Source HTTP material must be observed, not invented; preserve binary material and integer references exactly. Do not paste unrelated secrets into observations or expose raw configuration snapshots.
+Promotion: wait for the preceding job's native traffic/controls and restoration to finish and verify no unrelated task is using shared state. Then use diagnostic_job action=propose with new executionId, draftId and exact draftDigest and omit proposalJson. It verifies inputs and recompiles against a fresh live baseline, retaining the complete current settings including unrelated definitions. Changed settings/IDs/capabilities can make a previously passing draft fail. Inspect draftOrigin and the final planDigest, then use the unchanged REVIEW human-approval, prepare (five complete checks for each actually required branch), semantic evidence review and execute sequence. Missing/expired session recovery is not a wrong-password preparation requirement; never invent bad-credential branches. get or validate never starts this sequence automatically. Do not bypass a busy context using UI Import, private worker/CPH APIs, another execution ID, or extension reload. Use read-only status/Logger observation of the existing Scan independently; static validation is not permission to alter it.
+
+""" + JOB_PROPOSAL_CONTRACT) {
+        when(action) {
+            "validate" -> {
+                requireJob(nextTargetId==null && informationNeeded.isEmpty(),"DRAFT_PLANNING_ARGUMENTS_NOT_ALLOWED")
+                drafts.report(drafts.validate(draftId,
+                    jobJson.decodeFromString<JobProposal>(proposalJson ?: throw JobRejected("PROPOSAL_REQUIRED")),baselineExecutionId))
+            }
+            "get" -> {
+                requireJob(proposalJson == null && baselineExecutionId == null && nextTargetId==null && informationNeeded.isEmpty(), "DRAFT_READ_ARGUMENTS_NOT_ALLOWED")
+                drafts.report(drafts.load(draftId))
+            }
+            "submit_next" -> {
+                requireJob(informationNeeded.isEmpty(),"DRAFT_PLANNING_ARGUMENTS_NOT_ALLOWED")
+                lookAhead.submit(baselineExecutionId ?: throw JobRejected("BASELINE_EXECUTION_ID_REQUIRED"),
+                    nextTargetId ?: throw JobRejected("NEXT_TARGET_ID_REQUIRED"),draftId,
+                    jobJson.decodeFromString<JobProposal>(proposalJson ?: throw JobRejected("PROPOSAL_REQUIRED")))
+            }
+            "needs_information" -> {
+                requireJob(proposalJson==null && draftId.isEmpty(),"DRAFT_PLANNING_ARGUMENTS_NOT_ALLOWED")
+                lookAhead.information(baselineExecutionId ?: throw JobRejected("BASELINE_EXECUTION_ID_REQUIRED"),
+                    nextTargetId ?: throw JobRejected("NEXT_TARGET_ID_REQUIRED"),informationNeeded)
+            }
+            else -> throw JobRejected("UNSUPPORTED_DRAFT_ACTION")
+        }.toString()
+    }
+}

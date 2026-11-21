@@ -113,7 +113,7 @@ class InstallationPanel(
                 CoroutineScope(Dispatchers.Swing).launch {
                     Dialogs.showMessageDialog(
                         parentComponent,
-                        "Failed to install for ${provider.name}: ${e.message ?: e.javaClass.simpleName}",
+                        "${provider.name}へのインストールに失敗しました：${e.message ?: e.javaClass.simpleName}",
                         ERROR_MESSAGE
                     )
                 }

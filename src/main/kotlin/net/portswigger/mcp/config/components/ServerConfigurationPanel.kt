@@ -18,6 +18,9 @@ class ServerConfigurationPanel(
     private lateinit var alwaysAllowHttpHistoryCheckBox: JCheckBox
     private lateinit var alwaysAllowWebSocketHistoryCheckBox: JCheckBox
     private lateinit var alwaysAllowOrganizerCheckBox: JCheckBox
+    // >> 20261009 mniwa Display the independent all-tool Logger permission in the existing server configuration panel.
+    private lateinit var alwaysAllowLoggerHistoryCheckBox: JCheckBox
+    // << mniwa
 
     init {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -42,6 +45,9 @@ class ServerConfigurationPanel(
 
     private fun buildPanel() {
         add(Design.createSectionLabel("Server Configuration"))
+        add(JLabel(when { config.diagnosticManaged && config.diagnosticQuick -> "-re -q：Quick。診断依頼を対象・認証・前後処理の通信の承認として実行します。"
+            config.diagnosticManaged -> "-re：確認モード。診断ジョブの準備・実行を画面で承認します。"
+            else -> "-re：互換モード（起動時に明示指定）" }))
         add(createVerticalStrut(Design.Spacing.MD))
 
         val enabledPanel = createEnabledPanel()
@@ -71,6 +77,14 @@ class ServerConfigurationPanel(
         ) { config.alwaysAllowHttpHistory = it }
         add(alwaysAllowHttpHistoryCheckBox)
         add(createVerticalStrut(Design.Spacing.SM))
+
+        // >> 20261009 mniwa Allow the user to manage Logger access without changing the Proxy history grant.
+        alwaysAllowLoggerHistoryCheckBox = createIndentedCheckBox(
+            "Always allow MCP Logger capture access", config.alwaysAllowLoggerHistory, config.requireDataAccessApproval
+        ) { config.alwaysAllowLoggerHistory = it }
+        add(alwaysAllowLoggerHistoryCheckBox)
+        add(createVerticalStrut(Design.Spacing.SM))
+        // << mniwa
 
         alwaysAllowWebSocketHistoryCheckBox = createIndentedCheckBox(
             "Always allow WebSocket history access",
@@ -119,6 +133,10 @@ class ServerConfigurationPanel(
             config.requireDataAccessApproval = enabled
             if (!enabled) {
                 config.alwaysAllowHttpHistory = false
+                // >> 20261009 mniwa Reset the Logger grant alongside other saved grants when approvals are disabled.
+                config.alwaysAllowLoggerHistory = false
+                alwaysAllowLoggerHistoryCheckBox.isSelected = false
+                // << mniwa
                 config.alwaysAllowWebSocketHistory = false
                 config.alwaysAllowOrganizer = false
                 alwaysAllowHttpHistoryCheckBox.isSelected = false
@@ -126,6 +144,9 @@ class ServerConfigurationPanel(
                 alwaysAllowOrganizerCheckBox.isSelected = false
             }
             alwaysAllowHttpHistoryCheckBox.isEnabled = enabled
+            // >> 20261009 mniwa Keep the Logger checkbox enabled state consistent with other data-access controls.
+            alwaysAllowLoggerHistoryCheckBox.isEnabled = enabled
+            // << mniwa
             alwaysAllowWebSocketHistoryCheckBox.isEnabled = enabled
             alwaysAllowOrganizerCheckBox.isEnabled = enabled
         }
@@ -134,6 +155,9 @@ class ServerConfigurationPanel(
     fun updateDataAccessCheckboxes() {
         SwingUtilities.invokeLater {
             alwaysAllowHttpHistoryCheckBox.isSelected = config.alwaysAllowHttpHistory
+            // >> 20261009 mniwa Reflect Logger approvals granted through the access dialog in the server panel.
+            alwaysAllowLoggerHistoryCheckBox.isSelected = config.alwaysAllowLoggerHistory
+            // << mniwa
             alwaysAllowWebSocketHistoryCheckBox.isSelected = config.alwaysAllowWebSocketHistory
             alwaysAllowOrganizerCheckBox.isSelected = config.alwaysAllowOrganizer
         }

@@ -12,6 +12,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.serializer
 import net.portswigger.mcp.schema.asInputSchema
+import net.portswigger.mcp.jobs.ToolDispatch
 import kotlin.experimental.ExperimentalTypeInference
 
 @OptIn(InternalSerializationApi::class)
@@ -22,16 +23,13 @@ inline fun <reified I : Any> Server.mcpTool(
     val toolName = I::class.simpleName?.toLowerSnakeCase() ?: error("Couldn't find name for ${I::class}")
     val serializer = I::class.serializer()
     val inputSchema = I::class.asInputSchema()
+    val dispatch = ToolDispatch.forServer(this)
+    dispatch.register(toolName) { args -> execute(Json.decodeFromJsonElement(serializer, args)) }
 
     val handler: suspend (ClientConnection, CallToolRequest) -> CallToolResult = { _, request ->
         try {
             CallToolResult(
-                content = execute(
-                    Json.decodeFromJsonElement(
-                        serializer,
-                        request.params.arguments ?: JsonObject(emptyMap())
-                    )
-                ),
+                content = dispatch.publicCall(toolName, request.params.arguments ?: JsonObject(emptyMap())),
                 isError = false
             )
         } catch (e: Exception) {
@@ -42,7 +40,7 @@ inline fun <reified I : Any> Server.mcpTool(
         }
     }
 
-    addTool(name = toolName, description = description, inputSchema = inputSchema, handler = handler)
+    addTool(name = toolName, description = dispatch.publicDescription(toolName, description), inputSchema = inputSchema, handler = handler)
 }
 
 @OptIn(ExperimentalTypeInference::class)
@@ -116,10 +114,13 @@ inline fun Server.mcpTool(
     description: String,
     crossinline execute: () -> List<ContentBlock>
 ) {
+    val dispatch = ToolDispatch.forServer(this)
+    dispatch.register(name) { execute() }
     val handler: suspend (ClientConnection, CallToolRequest) -> CallToolResult = { _, _ ->
-        CallToolResult(content = execute(), isError = false)
+        try { CallToolResult(content = dispatch.publicCall(name, JsonObject(emptyMap())), isError = false) }
+        catch(e: Exception) { CallToolResult(content=listOf(TextContent("Error: ${e.message}")),isError=true) }
     }
-    addTool(name = name, description = description, inputSchema = ToolSchema(), handler = handler)
+    addTool(name = name, description = dispatch.publicDescription(name, description), inputSchema = ToolSchema(), handler = handler)
 }
 
 inline fun Server.mcpTool(
@@ -127,10 +128,13 @@ inline fun Server.mcpTool(
     description: String,
     crossinline execute: () -> String
 ) {
+    val dispatch = ToolDispatch.forServer(this)
+    dispatch.register(name) { listOf(TextContent(execute())) }
     val handler: suspend (ClientConnection, CallToolRequest) -> CallToolResult = { _, _ ->
-        CallToolResult(content = listOf(TextContent(execute())), isError = false)
+        try { CallToolResult(content = dispatch.publicCall(name, JsonObject(emptyMap())), isError = false) }
+        catch(e: Exception) { CallToolResult(content=listOf(TextContent("Error: ${e.message}")),isError=true) }
     }
-    addTool(name = name, description = description, inputSchema = ToolSchema(), handler = handler)
+    addTool(name = name, description = dispatch.publicDescription(name, description), inputSchema = ToolSchema(), handler = handler)
 }
 
 fun String.toLowerSnakeCase(): String {

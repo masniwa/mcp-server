@@ -1,0 +1,1984 @@
+{
+  "description": "Sanitized recorded response sequence. Paths retain only exact equality, with all HTTP bodies, cookies, credentials and original destinations removed.",
+  "expected": {
+    "totalRows": 131,
+    "observed429Count": 13,
+    "normalPrerequisite429Ids": [
+      729,
+      739,
+      749,
+      759,
+      769,
+      779
+    ],
+    "firstLaterPrerequisiteResponseId": 789,
+    "laterPrerequisiteStatus": 302
+  },
+  "entries": [
+    {
+      "captureId": "sanitized-capture",
+      "id": 701,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:27:58.264422100Z",
+      "responseTime": "2026-11-12T16:27:58.323822600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 702,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-2 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:27:58.349954400Z",
+      "responseTime": "2026-11-12T16:27:58.829083100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 703,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-3 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:27:58.843955900Z",
+      "responseTime": "2026-11-12T16:27:58.912725600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 704,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:27:58.947222300Z",
+      "responseTime": "2026-11-12T16:27:59.069225200Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 705,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:27:59.085433200Z",
+      "responseTime": "2026-11-12T16:27:59.151923600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 706,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:27:59.180394200Z",
+      "responseTime": "2026-11-12T16:27:59.226169900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 707,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:27:59.250749600Z",
+      "responseTime": "2026-11-12T16:27:59.312646500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 708,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:27:59.327442300Z",
+      "responseTime": "2026-11-12T16:27:59.676408900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 709,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:27:59.712761Z",
+      "responseTime": "2026-11-12T16:27:59.803756Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 710,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:27:59.832209300Z",
+      "responseTime": "2026-11-12T16:27:59.895746100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 711,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:27:59.919360300Z",
+      "responseTime": "2026-11-12T16:28:00.00529Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 712,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:00.025973200Z",
+      "responseTime": "2026-11-12T16:28:00.091041100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 713,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-6 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:00.104826400Z",
+      "responseTime": "2026-11-12T16:28:00.440964400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 714,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-3 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:00.463744800Z",
+      "responseTime": "2026-11-12T16:28:00.535541400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 715,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:00.551534300Z",
+      "responseTime": "2026-11-12T16:28:00.676184800Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 716,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:00.719250200Z",
+      "responseTime": "2026-11-12T16:28:00.808073Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 717,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:00.846522400Z",
+      "responseTime": "2026-11-12T16:28:00.896570600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 718,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:00.921935600Z",
+      "responseTime": "2026-11-12T16:28:00.977956400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 719,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:01.015943300Z",
+      "responseTime": "2026-11-12T16:28:01.286659Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 720,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:01.300898700Z",
+      "responseTime": "2026-11-12T16:28:01.360498900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 721,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:01.377206100Z",
+      "responseTime": "2026-11-12T16:28:01.440221100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 722,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:01.453538100Z",
+      "responseTime": "2026-11-12T16:28:01.504420700Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 723,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:01.520182400Z",
+      "responseTime": "2026-11-12T16:28:01.581104100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 724,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-7 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:01.603415400Z",
+      "responseTime": "2026-11-12T16:28:01.638683900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 725,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:01.680629200Z",
+      "responseTime": "2026-11-12T16:28:01.742445800Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 726,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:01.816713100Z",
+      "responseTime": "2026-11-12T16:28:01.868260100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 727,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:01.898220600Z",
+      "responseTime": "2026-11-12T16:28:01.955131300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 728,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:02.977410200Z",
+      "responseTime": "2026-11-12T16:28:03.026804Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 729,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:03.036223800Z",
+      "responseTime": "2026-11-12T16:28:03.052852Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 730,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:03.062662700Z",
+      "responseTime": "2026-11-12T16:28:03.077885500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 731,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:03.087833100Z",
+      "responseTime": "2026-11-12T16:28:03.101088600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 732,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:03.122849800Z",
+      "responseTime": "2026-11-12T16:28:03.159865600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 733,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:03.169107200Z",
+      "responseTime": "2026-11-12T16:28:03.219630400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 734,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-7 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:03.234092600Z",
+      "responseTime": "2026-11-12T16:28:03.253873400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 735,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:03.267069100Z",
+      "responseTime": "2026-11-12T16:28:03.311633300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 736,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:03.323790700Z",
+      "responseTime": "2026-11-12T16:28:03.364678900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 737,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:03.376937900Z",
+      "responseTime": "2026-11-12T16:28:03.420034800Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 738,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:05.436282900Z",
+      "responseTime": "2026-11-12T16:28:05.481803300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 739,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:05.491235100Z",
+      "responseTime": "2026-11-12T16:28:05.511211500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 740,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:05.523503500Z",
+      "responseTime": "2026-11-12T16:28:05.537729Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 741,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:05.555652200Z",
+      "responseTime": "2026-11-12T16:28:05.568033500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 742,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:05.581918700Z",
+      "responseTime": "2026-11-12T16:28:05.627435700Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 743,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:05.637837200Z",
+      "responseTime": "2026-11-12T16:28:05.694786200Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 744,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-7 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:05.725728800Z",
+      "responseTime": "2026-11-12T16:28:05.753259900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 745,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:05.763638200Z",
+      "responseTime": "2026-11-12T16:28:05.805945600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 746,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:05.817244Z",
+      "responseTime": "2026-11-12T16:28:05.855878700Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 747,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:05.868224800Z",
+      "responseTime": "2026-11-12T16:28:05.915676400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 748,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:09.935577100Z",
+      "responseTime": "2026-11-12T16:28:09.979849300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 749,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:09.995620800Z",
+      "responseTime": "2026-11-12T16:28:10.016226500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 750,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:10.029542900Z",
+      "responseTime": "2026-11-12T16:28:10.042797100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 751,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:10.053154Z",
+      "responseTime": "2026-11-12T16:28:10.063706900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 752,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:10.072536500Z",
+      "responseTime": "2026-11-12T16:28:10.114748700Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 753,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:10.128295900Z",
+      "responseTime": "2026-11-12T16:28:10.169591300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 754,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-7 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:10.180885300Z",
+      "responseTime": "2026-11-12T16:28:10.202510600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 755,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:10.219282600Z",
+      "responseTime": "2026-11-12T16:28:10.273793200Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 756,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:10.287143500Z",
+      "responseTime": "2026-11-12T16:28:10.328691200Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 757,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:10.341843600Z",
+      "responseTime": "2026-11-12T16:28:10.384592400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 758,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:18.398122900Z",
+      "responseTime": "2026-11-12T16:28:18.462739600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 759,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:18.476946600Z",
+      "responseTime": "2026-11-12T16:28:18.500118400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 760,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:18.514366100Z",
+      "responseTime": "2026-11-12T16:28:18.537024Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 761,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:18.549281Z",
+      "responseTime": "2026-11-12T16:28:18.564042100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 762,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:18.573434400Z",
+      "responseTime": "2026-11-12T16:28:18.621030800Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 763,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:18.641798900Z",
+      "responseTime": "2026-11-12T16:28:18.701341400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 764,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-7 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:18.719318400Z",
+      "responseTime": "2026-11-12T16:28:18.743973100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 765,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:18.753365200Z",
+      "responseTime": "2026-11-12T16:28:18.798587500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 766,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:18.808900500Z",
+      "responseTime": "2026-11-12T16:28:18.845750100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 767,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:18.862870400Z",
+      "responseTime": "2026-11-12T16:28:18.914469500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 768,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:34.948835200Z",
+      "responseTime": "2026-11-12T16:28:34.999749300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 769,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.010978Z",
+      "responseTime": "2026-11-12T16:28:35.034651300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 770,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.047876500Z",
+      "responseTime": "2026-11-12T16:28:35.063621600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 771,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.077870600Z",
+      "responseTime": "2026-11-12T16:28:35.091548900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 772,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.103891Z",
+      "responseTime": "2026-11-12T16:28:35.147242600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 773,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.161530100Z",
+      "responseTime": "2026-11-12T16:28:35.213771Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 774,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-7 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.227599900Z",
+      "responseTime": "2026-11-12T16:28:35.254083700Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 775,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.268841900Z",
+      "responseTime": "2026-11-12T16:28:35.321506100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 776,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.337672400Z",
+      "responseTime": "2026-11-12T16:28:35.381513700Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 777,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.393836500Z",
+      "responseTime": "2026-11-12T16:28:35.444264300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 778,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.474268100Z",
+      "responseTime": "2026-11-12T16:28:35.519668800Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 779,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.536393900Z",
+      "responseTime": "2026-11-12T16:28:35.565067400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 780,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.581790900Z",
+      "responseTime": "2026-11-12T16:28:35.604457800Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 781,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.621412700Z",
+      "responseTime": "2026-11-12T16:28:35.637470300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 782,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.655664800Z",
+      "responseTime": "2026-11-12T16:28:35.735082900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 783,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.753794200Z",
+      "responseTime": "2026-11-12T16:28:35.878726300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 784,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-8 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 429 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.926040300Z",
+      "responseTime": "2026-11-12T16:28:35.966200900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 785,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:35.990443500Z",
+      "responseTime": "2026-11-12T16:28:36.090516500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 786,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:36.131116300Z",
+      "responseTime": "2026-11-12T16:28:36.201276600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 787,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:36.233215500Z",
+      "responseTime": "2026-11-12T16:28:36.326470800Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 788,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:37.368220800Z",
+      "responseTime": "2026-11-12T16:28:37.437455100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 789,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:37.452418700Z",
+      "responseTime": "2026-11-12T16:28:37.995906700Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 790,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:38.022320800Z",
+      "responseTime": "2026-11-12T16:28:38.177502Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 791,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:38.220518800Z",
+      "responseTime": "2026-11-12T16:28:38.309690300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 792,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:38.332531100Z",
+      "responseTime": "2026-11-12T16:28:38.418106200Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 793,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:38.439724Z",
+      "responseTime": "2026-11-12T16:28:38.536397900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 794,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-8 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:38.560007100Z",
+      "responseTime": "2026-11-12T16:28:39.224955500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 795,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-3 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:39.252010500Z",
+      "responseTime": "2026-11-12T16:28:39.359141500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 796,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:39.390167300Z",
+      "responseTime": "2026-11-12T16:28:39.532656900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 797,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:39.566655200Z",
+      "responseTime": "2026-11-12T16:28:39.684521800Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 798,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:39.715727700Z",
+      "responseTime": "2026-11-12T16:28:39.820208300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 799,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:39.849916Z",
+      "responseTime": "2026-11-12T16:28:39.932843300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 800,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:39.966902200Z",
+      "responseTime": "2026-11-12T16:28:40.646376Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 801,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:40.678402Z",
+      "responseTime": "2026-11-12T16:28:40.904118600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 802,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:40.931695100Z",
+      "responseTime": "2026-11-12T16:28:41.117599400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 803,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:41.150522900Z",
+      "responseTime": "2026-11-12T16:28:41.260805100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 804,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:41.288928700Z",
+      "responseTime": "2026-11-12T16:28:41.433993700Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 805,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-9 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:41.460548Z",
+      "responseTime": "2026-11-12T16:28:42.257311200Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 806,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-3 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:42.285333200Z",
+      "responseTime": "2026-11-12T16:28:42.408665Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 807,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:42.435072300Z",
+      "responseTime": "2026-11-12T16:28:42.633595900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 808,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:42.689522100Z",
+      "responseTime": "2026-11-12T16:28:42.839331300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 809,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:42.921944100Z",
+      "responseTime": "2026-11-12T16:28:43.032831Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 810,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:43.138698600Z",
+      "responseTime": "2026-11-12T16:28:43.287237900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 811,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:43.357834300Z",
+      "responseTime": "2026-11-12T16:28:45.229427400Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 812,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:45.268745800Z",
+      "responseTime": "2026-11-12T16:28:45.425865800Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 813,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:45.459812400Z",
+      "responseTime": "2026-11-12T16:28:46.566917300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 814,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:46.590496500Z",
+      "responseTime": "2026-11-12T16:28:47.708882600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 815,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:47.730387900Z",
+      "responseTime": "2026-11-12T16:28:47.803196300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 816,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-10 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:47.822417100Z",
+      "responseTime": "2026-11-12T16:28:48.358257100Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 817,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:48.378691600Z",
+      "responseTime": "2026-11-12T16:28:48.497314600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 818,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:48.515587800Z",
+      "responseTime": "2026-11-12T16:28:49.594145300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 819,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:49.613427500Z",
+      "responseTime": "2026-11-12T16:28:50.695461600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 820,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:50.724516300Z",
+      "responseTime": "2026-11-12T16:28:50.833004600Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 821,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:50.860058100Z",
+      "responseTime": "2026-11-12T16:28:52.535872800Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 822,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:52.560126900Z",
+      "responseTime": "2026-11-12T16:28:52.675252Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 823,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:52.696909800Z",
+      "responseTime": "2026-11-12T16:28:53.802463200Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 824,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:53.832466300Z",
+      "responseTime": "2026-11-12T16:28:54.911514900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 825,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:54.937015700Z",
+      "responseTime": "2026-11-12T16:28:55.006550300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 826,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-11 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:55.024433200Z",
+      "responseTime": "2026-11-12T16:28:55.565955500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 827,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:55.585077600Z",
+      "responseTime": "2026-11-12T16:28:55.705034500Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 828,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-5 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:55.727197200Z",
+      "responseTime": "2026-11-12T16:28:56.845122Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 829,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-4 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 401 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:56.868817800Z",
+      "responseTime": "2026-11-12T16:28:57.920603300Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 830,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "GET /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 200 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:57.950979200Z",
+      "responseTime": "2026-11-12T16:28:58.008644900Z"
+    },
+    {
+      "captureId": "sanitized-capture",
+      "id": 831,
+      "tool": "SCANNER",
+      "httpService": {
+        "host": "archive.fixture.invalid",
+        "port": 8443,
+        "secure": true
+      },
+      "request": "POST /fixture/path-1 HTTP/1.1\r\nHost: archive.fixture.invalid:8443\r\n\r\n",
+      "response": "HTTP/1.1 302 Observed\r\n\r\n",
+      "responseState": "RESPONSE_RECEIVED",
+      "requestTime": "2026-11-12T16:28:58.025373800Z",
+      "responseTime": "2026-11-12T16:28:59.583475700Z"
+    }
+  ]
+}

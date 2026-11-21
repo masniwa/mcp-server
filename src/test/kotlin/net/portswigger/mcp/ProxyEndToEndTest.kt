@@ -5,6 +5,12 @@ import burp.api.montoya.logging.Logging
 import burp.api.montoya.persistence.PersistedObject
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
+import burp.api.montoya.proxy.ProxyHttpRequestResponse
+import kotlinx.serialization.json.Json
+import net.portswigger.mcp.schema.HttpRequestResponse
+import net.portswigger.mcp.schema.toSerializableForm
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -29,6 +35,24 @@ import kotlin.time.Duration.Companion.milliseconds
  */
 @Timeout(30, unit = TimeUnit.SECONDS)
 class ProxyEndToEndTest {
+    @Test fun `large unicode history survives SSE proxy and stdio with exact decoded values`() = runBlocking {
+        val items=List(3) { mockk<ProxyHttpRequestResponse>() }
+        every { api.proxy().history() } returns items
+        mockkStatic("net.portswigger.mcp.schema.SerializationKt")
+        try {
+            val expected=items.mapIndexed { i,item ->
+                val body="a".repeat(8190+i)+"本文é🚀\\u1234".repeat(10000)
+                HttpRequestResponse("GET / HTTP/1.1\r\nX-Test: $body", "HTTP/1.1 200 OK\r\n\r\n$body", "注記$i").also {
+                    every { item.toSerializableForm() } returns it
+                }
+            }
+            val result=client.callTool("get_proxy_http_history",mapOf("count" to 3,"offset" to 0))!!
+            assertFalse(result.isError==true)
+            val output=(result.content.single() as TextContent).text
+            assertTrue(output.all { it.code<128 })
+            assertEquals(expected,output.split("\n\n").map { Json.decodeFromString<HttpRequestResponse>(it) })
+        } finally { unmockkStatic("net.portswigger.mcp.schema.SerializationKt") }
+    }
     private val logger = LoggerFactory.getLogger(ProxyEndToEndTest::class.java)
 
     private val api = mockk<MontoyaApi>(relaxed = true)

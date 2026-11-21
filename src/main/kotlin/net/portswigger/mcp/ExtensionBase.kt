@@ -7,15 +7,20 @@ import net.portswigger.mcp.config.McpConfig
 import net.portswigger.mcp.providers.ClaudeDesktopProvider
 import net.portswigger.mcp.providers.ManualProxyInstallerProvider
 import net.portswigger.mcp.providers.ProxyJarManager
+import net.portswigger.mcp.jobs.ManagedSettings
 
 @Suppress("unused")
 class ExtensionBase : BurpExtension {
 
     override fun initialize(api: MontoyaApi) {
-        api.extension().setName("Burp MCP Server")
-
-        val config = McpConfig(api.persistence().extensionData(), api.logging())
-        val serverManager = KtorServerManager(api)
+        val selectedJar=java.nio.file.Path.of(api.extension().filename())
+        net.portswigger.mcp.security.LocalCphCredentials.useInstallation(selectedJar)
+        val managed=ManagedSettings.forExtension(root=net.portswigger.mcp.jobs.InstalledRuntime.rootForJar(selectedJar))
+        api.extension().setName(if(managed.quick) "Burp MCP Server -re -q (Quick)" else "Burp MCP Server -re")
+        val config = McpConfig(api.persistence().extensionData(), api.logging(),managed.enabled,managed.quick)
+        val serverManager = KtorServerManager(api,managed)
+        managed.profileFile?.let { api.logging().logToOutput("診断ジョブの管理設定：$it") }
+        api.logging().logToOutput(if(managed.enabled) "診断ジョブ管理モードで起動します。" else "互換モードで起動します（環境変数による明示指定）。")
 
         val proxyJarManager = ProxyJarManager(api.logging())
 
@@ -40,7 +45,7 @@ class ExtensionBase : BurpExtension {
             }
         }
 
-        api.userInterface().registerSuiteTab("MCP", configUi.component)
+        api.userInterface().registerSuiteTab(if(managed.quick) "MCP -re -q" else "MCP -re", configUi.component)
 
         api.extension().registerUnloadingHandler {
             serverManager.shutdown()
